@@ -71,6 +71,10 @@ STRINGS = {
         "c_imdb_cancel": "IMDb-Eingabe: Abbruch durch Benutzer.",
         "c_imdb_invalid": "Keine gültige IMDb-ID: {val}",
         "c_sync_suspect": "    ⚠ Viele stark verschobene Blöcke — der Untertitel passt vermutlich nicht zu diesem Video (anderer Film/Schnitt).",
+        "c_got": "    geladen [{lang}]: {rel} ({prov})",
+        "c_syncing": "    synchronisiere gegen die Tonspur (~1–2 min)…",
+        "p_suspect": "{n} fraglich",
+        "suspect_hint": "\n⚠ Bei diesen Videos passt der geladene Untertitel vermutlich nicht — über „IMDb-ID angeben…“ gezielt neu suchen:",
     },
     "ru": {
         "folder": "Папка:",
@@ -125,6 +129,10 @@ STRINGS = {
         "c_imdb_cancel": "Ввод IMDb: отменено пользователем.",
         "c_imdb_invalid": "Неверный IMDb-ID: {val}",
         "c_sync_suspect": "    ⚠ Много сильно сдвинутых блоков — субтитры, вероятно, не подходят к этому видео (другой фильм/версия).",
+        "c_got": "    загружено [{lang}]: {rel} ({prov})",
+        "c_syncing": "    синхронизация со звуковой дорожкой (~1–2 мин)…",
+        "p_suspect": "{n} под вопросом",
+        "suspect_hint": "\n⚠ У этих видео загруженные субтитры, вероятно, не подходят — используйте «Указать IMDb-ID…» для точного поиска:",
     },
     "en": {
         "folder": "Folder:",
@@ -179,6 +187,10 @@ STRINGS = {
         "c_imdb_cancel": "IMDb entry: cancelled by user.",
         "c_imdb_invalid": "Not a valid IMDb ID: {val}",
         "c_sync_suspect": "    ⚠ Many heavily shifted blocks — this subtitle probably does not match the video (different movie/cut).",
+        "c_got": "    downloaded [{lang}]: {rel} ({prov})",
+        "c_syncing": "    syncing against the audio track (~1–2 min)…",
+        "p_suspect": "{n} questionable",
+        "suspect_hint": "\n⚠ For these videos the downloaded subtitle probably does not match — use “Specify IMDb ID…” for a targeted search:",
     },
 }
 

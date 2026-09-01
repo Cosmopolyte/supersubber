@@ -39,6 +39,8 @@ def bin_dir() -> Path:
 class Result:
     synced: list[str] = field(default_factory=list)
     unsynced: list[str] = field(default_factory=list)   # geladen, alass gescheitert → roh übernommen
+    suspect: list[str] = field(default_factory=list)    # gesynct, aber Untertitel passt vermutlich nicht
+    suspect_items: list[tuple[str, str]] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
     missing_items: list[tuple[str, str]] = field(default_factory=list)   # (Videopfad, Sprachkürzel)
     noaccess: list[str] = field(default_factory=list)   # Ordner ohne Schreibrecht
@@ -92,7 +94,9 @@ def _cue_count(sub: Path) -> int:
         return 0
 
 
-def _alass(video: Path, sub: Path, out: Path, log: Log, tr: Tr = _tr_fallback) -> bool:
+def _alass(video: Path, sub: Path, out: Path, log: Log, tr: Tr = _tr_fallback) -> tuple[bool, bool]:
+    """Sync ausführen. Rückgabe: (erfolgreich, verdächtig) — verdächtig = mehrere Blöcke um Minuten
+    verschoben, der Untertitel gehört dann vermutlich zu einem anderen Film/Schnitt."""
     b = bin_dir()
     env = dict(os.environ, ALASS_FFMPEG_PATH=str(b / "ffmpeg.exe"), ALASS_FFPROBE_PATH=str(b / "ffprobe.exe"))
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
@@ -102,7 +106,7 @@ def _alass(video: Path, sub: Path, out: Path, log: Log, tr: Tr = _tr_fallback) -
                            creationflags=flags)
     except OSError as e:
         log(f"    alass: {e}")
-        return False
+        return False, False
     big_shifts = 0
     for line in re.split(r"[\r\n]+", (r.stdout or "") + (r.stderr or "")):
         if re.search(r"shifted|ratio is|error", line):
@@ -110,10 +114,10 @@ def _alass(video: Path, sub: Path, out: Path, log: Log, tr: Tr = _tr_fallback) -
         m = re.search(r"by (-?)(\d+):(\d\d):(\d\d)\.", line)
         if m and int(m.group(2)) * 3600 + int(m.group(3)) * 60 + int(m.group(4)) > 300:
             big_shifts += 1
-    if big_shifts >= 3:
-        # Viele Blöcke um Minuten verschoben → Sub gehört vermutlich zu einem anderen Film/Schnitt
+    suspect = big_shifts >= 2
+    if suspect:
         log(tr("c_sync_suspect"))
-    return r.returncode == 0 and out.exists()
+    return r.returncode == 0 and out.exists(), suspect
 
 
 def _region_setup():
@@ -170,6 +174,8 @@ def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
                     ignore.append(s.id)
                     p.unlink(missing_ok=True)
                     continue
+                rel = getattr(s, "release", None) or getattr(s, "info", None) or s.id
+                log(tr("c_got", lang=s.language.alpha2, rel=rel, prov=s.provider_name))
                 got[s.language.alpha2] = p
                 want.discard(s.language)
     except Exception as e:  # noqa: BLE001
@@ -188,7 +194,12 @@ def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
             res.missing_items.append((str(video), lang))
             continue
         out = video.with_name(f"{video.stem}.{lang}{dl.suffix.lower()}")
-        if _alass(video, dl, out, log, tr):
+        log(tr("c_syncing"))
+        ok, suspect = _alass(video, dl, out, log, tr)
+        if ok and suspect:
+            res.suspect.append(f"{video.name}  [{lang}]")
+            res.suspect_items.append((str(video), lang))
+        elif ok:
             res.synced.append(f"{video.name}  [{lang}]")
         else:
             shutil.copyfile(dl, out)

@@ -340,24 +340,28 @@ class App(_Root):
         self.bar.set(1.0, "100 %")
         self.status.config(text=self.t("done"))
         self._missing = {}
-        for path, lang in res.missing_items:
+        for path, lang in res.missing_items + res.suspect_items:
             self._missing.setdefault(path, []).append(lang)
         if self._missing:
             self.imdb_btn.pack(side="right")
-        if not res.synced and not res.unsynced and not res.missing and not res.noaccess and not res.cancelled:
+        if not res.synced and not res.unsynced and not res.suspect and not res.missing and not res.noaccess and not res.cancelled:
             self._set_result(self.t("res_all_have", n=res.skipped), OK_LIGHT)
             return
         parts = [self.t("p_synced", n=len(res.synced))]
         if res.skipped: parts.append(self.t("p_existing", n=res.skipped))
+        if res.suspect: parts.append(self.t("p_suspect", n=len(res.suspect)))
         if res.unsynced: parts.append(self.t("p_unsynced", n=len(res.unsynced)))
         if res.missing: parts.append(self.t("p_missing", n=len(res.missing)))
         if res.noaccess: parts.append(self.t("p_noaccess", n=len(res.noaccess)))
-        ok = not res.missing and not res.unsynced and not res.noaccess and not res.cancelled
+        ok = not res.missing and not res.unsynced and not res.suspect and not res.noaccess and not res.cancelled
         head = self.t("res_cancelled") if res.cancelled else self.t("res_done")
         self._set_result(("✔  " if ok else "⚠  ") + head + ", ".join(parts), OK_LIGHT if ok else WARN_LIGHT)
         if res.missing:
             self._log(self.t("missing_hint"))
             for m in res.missing: self._log("  " + m)
+        if res.suspect:
+            self._log(self.t("suspect_hint"))
+            for m in res.suspect: self._log("  " + m)
         if res.noaccess:
             self._log(self.t("noaccess_hint"))
             for d in res.noaccess: self._log("  " + d)
