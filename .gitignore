@@ -1,0 +1,9 @@
+.venv/
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+# Binaries (alass + ffmpeg) werden nicht versioniert -> fetch-bins.ps1
+bin/*.exe
+bin/*.dll
