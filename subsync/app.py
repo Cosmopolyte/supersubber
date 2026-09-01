@@ -182,6 +182,7 @@ class App(_Root):
                 w.dnd_bind("<<Drop>>", self.on_drop)
 
         row = ttk.Frame(card1); row.pack(fill="x", padx=10, pady=(0, 12))
+        self._subrow = row
         ttk.Label(row, text=self.t("subtitles"), width=11).pack(side="left")
         self.lang_sel: dict[str, tk.BooleanVar] = {}
         self.lang_btn = ttk.Menubutton(row, direction="below")
@@ -189,6 +190,17 @@ class App(_Root):
         self._build_lang_menu()
         self.start_btn = ttk.Button(row, text=self.t("start"), command=self.start, width=12, style="Accent.TButton")
         self.start_btn.pack(side="right")
+
+        # IMDb-Zeile — erscheint nur, wenn der Ordner genau EIN Video enthält (Einzelfilm-Fall)
+        self.imdb_row = ttk.Frame(card1)
+        ttk.Label(self.imdb_row, text=self.t("imdb_label"), width=11).pack(side="left")
+        self.imdb_var = tk.StringVar()
+        ttk.Entry(self.imdb_row, textvariable=self.imdb_var, width=24).pack(side="left")
+        ttk.Label(self.imdb_row, text=self.t("imdb_opt_hint"), foreground=GREY,
+                  font=("Segoe UI", 9)).pack(side="left", padx=8)
+        self._chk_job = None
+        self.folder_var.trace_add("write", lambda *a: self._folder_changed())
+        self._update_imdb_row()
 
         # ---- Karte 2: Balken, Statuszeile, Ergebnis, Log (ohne Titel)
         sec = tk.Frame(self, bg=CARD)
@@ -215,8 +227,31 @@ class App(_Root):
                            bg=IDLE_BG, fg=INK)
         sb = ttk.Scrollbar(self._logf, orient="vertical", command=self.log.yview)
         self.log.configure(yscrollcommand=sb.set)
+        self.log.tag_configure("head", font=("Consolas", 9, "bold"), spacing1=7)
+        self.log.tag_configure("sub", lmargin1=20, lmargin2=20)
+        self.log.tag_configure("warn", foreground="#7a5c00")
         sb.pack(side="right", fill="y")
         self.log.pack(side="left", fill="both", expand=True)
+
+    def _folder_changed(self):
+        if self._chk_job:
+            self.after_cancel(self._chk_job)
+        self._chk_job = self.after(400, self._update_imdb_row)
+
+    def _update_imdb_row(self):
+        self._chk_job = None
+        folder = self.folder_var.get().strip().strip('"')
+        single = False
+        if os.path.isdir(folder):
+            try:
+                single = core.count_videos(folder, int(self.cfg.get("min_size_mb", 50))) == 1
+            except OSError:
+                pass
+        if single:
+            self.imdb_row.pack(fill="x", padx=10, pady=(0, 12), after=self._subrow)
+        else:
+            self.imdb_row.pack_forget()
+            self.imdb_var.set("")
 
     def _set_result(self, text: str, fg: str):
         if text:
@@ -285,19 +320,27 @@ class App(_Root):
             messagebox.showwarning("subsync", self.t("warn_folder")); return
         if not langs:
             messagebox.showwarning("subsync", self.t("warn_lang")); return
+        imdb_id = None
+        raw = self.imdb_var.get().strip()
+        if raw and self.imdb_row.winfo_ismapped():
+            m = IMDB_RE.search(raw)
+            if not m:
+                messagebox.showwarning("subsync", self.t("c_imdb_invalid", val=raw)); return
+            imdb_id = m.group(0)
         self.cfg["languages"] = langs; config.save(self.cfg)
         self.cancel.clear()
         self._log_clear()
-        self.worker = threading.Thread(target=self._work, args=(folder, langs), daemon=True)
+        self.worker = threading.Thread(target=self._work, args=(folder, langs, imdb_id), daemon=True)
         self._busy(True)
         self.worker.start()
 
-    def _work(self, folder, langs):
+    def _work(self, folder, langs, imdb_id=None):
         ui = self.ui
         res = core.run(folder, langs, self.cfg,
                        progress=lambda m, i, n: self.q.put(("progress", m, i, n)),
                        log=lambda s: self.q.put(("log", s)), cancel=self.cancel,
-                       tr=lambda key, **kw: i18n.tr(ui, key, **kw))
+                       tr=lambda key, **kw: i18n.tr(ui, key, **kw),
+                       frac=lambda v: self.q.put(("frac", v)), imdb_id=imdb_id)
         self.q.put(("done", res))
 
     def _animate(self):
@@ -316,11 +359,12 @@ class App(_Root):
                 item = self.q.get_nowait()
                 if item[0] == "log":
                     self._log(item[1])
+                elif item[0] == "frac":
+                    v = item[1]
+                    self.bar.set(v, f"{int(v * 100)} %")
                 elif item[0] == "progress":
                     _, m, i, n = item
                     if n:
-                        frac = (i - 1 + 0.4) / n
-                        self.bar.set(frac, f"{int(frac * 100)} %")
                         self.status.config(text=f"[{i}/{n}] {m}")
                     else:
                         self.bar.pulse()
@@ -425,7 +469,8 @@ class App(_Root):
             res = core.run_imdb(jobs, self.cfg,
                                 progress=lambda m, i, n: self.q.put(("progress", m, i, n)),
                                 log=lambda s: self.q.put(("log", s)), cancel=self.cancel,
-                                tr=lambda key, **kw: i18n.tr(ui, key, **kw))
+                                tr=lambda key, **kw: i18n.tr(ui, key, **kw),
+                                frac=lambda v: self.q.put(("frac", v)))
             self.q.put(("done", res))
 
         self.worker = threading.Thread(target=work, daemon=True)
@@ -503,7 +548,16 @@ class App(_Root):
 
     # ---- Log ----------------------------------------------------------------
     def _log(self, s: str):
-        self.log.config(state="normal"); self.log.insert("end", s + "\n"); self.log.see("end"); self.log.config(state="disabled")
+        tags: tuple[str, ...] = ()
+        txt = s
+        if s.startswith("    ") or s.startswith("  "):
+            txt = s.lstrip(" ")
+            tags = ("sub",)
+        elif s.startswith("[") or s.startswith(("Suche per IMDb", "Searching via IMDb", "Поиск по IMDb")):
+            tags = ("head",)
+        if "⚠" in s:
+            tags = tags + ("warn",)
+        self.log.config(state="normal"); self.log.insert("end", txt + "\n", tags); self.log.see("end"); self.log.config(state="disabled")
 
     def _log_clear(self):
         self.log.config(state="normal"); self.log.delete("1.0", "end"); self.log.config(state="disabled")

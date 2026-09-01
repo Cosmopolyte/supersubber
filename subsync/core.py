@@ -24,6 +24,7 @@ MAX_ATTEMPTS = 3         # Kandidaten pro Sprache, bevor aufgegeben wird
 Progress = Callable[[str, int, int], None]   # (Meldung, aktuell, gesamt)
 Log = Callable[[str], None]
 Tr = Callable[..., str]                      # tr(key, **kw) — Übersetzung, von der GUI geliefert
+Frac = Callable[[float], None]               # Gesamt-Fortschritt 0..1 für den Balken
 
 
 def _tr_fallback(key: str, **kw) -> str:
@@ -63,6 +64,23 @@ def find_videos(folder: str, min_size_mb: int) -> list[Path]:
     return sorted(out)
 
 
+def count_videos(folder: str, min_size_mb: int, limit: int = 2) -> int:
+    """Zählt Videos, bricht bei `limit` ab (fürs GUI: „genau eines?")."""
+    n = 0
+    for root, _, files in os.walk(folder):
+        for f in files:
+            p = Path(root) / f
+            if p.suffix.lower() in VIDEO_EXT:
+                try:
+                    if p.stat().st_size >= min_size_mb * 1024 * 1024:
+                        n += 1
+                        if n >= limit:
+                            return n
+                except OSError:
+                    pass
+    return n
+
+
 def has_sub(video: Path, lang: str) -> bool:
     return any((video.with_name(f"{video.stem}.{lang}{ext}")).exists() for ext in SUB_EXT)
 
@@ -94,21 +112,43 @@ def _cue_count(sub: Path) -> int:
         return 0
 
 
-def _alass(video: Path, sub: Path, out: Path, log: Log, tr: Tr = _tr_fallback) -> tuple[bool, bool]:
-    """Sync ausführen. Rückgabe: (erfolgreich, verdächtig) — verdächtig = mehrere Blöcke um Minuten
-    verschoben, der Untertitel gehört dann vermutlich zu einem anderen Film/Schnitt."""
+def _alass(video: Path, sub: Path, out: Path, log: Log, tr: Tr = _tr_fallback,
+           subprog: Callable[[float], None] | None = None) -> tuple[bool, bool]:
+    """Sync ausführen; alass-Fortschritt (Audio-Analyse) wird live an subprog (0..1) gemeldet.
+    Rückgabe: (erfolgreich, verdächtig) — verdächtig = mehrere Blöcke um Minuten verschoben."""
     b = bin_dir()
     env = dict(os.environ, ALASS_FFMPEG_PATH=str(b / "ffmpeg.exe"), ALASS_FFPROBE_PATH=str(b / "ffprobe.exe"))
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
     try:
-        r = subprocess.run([str(b / "alass-cli.exe"), str(video), str(sub), str(out)],
-                           env=env, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                           creationflags=flags)
+        proc = subprocess.Popen([str(b / "alass-cli.exe"), str(video), str(sub), str(out)],
+                                env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, encoding="utf-8", errors="replace", creationflags=flags)
     except OSError as e:
         log(f"    alass: {e}")
         return False, False
+    lines: list[str] = []
+    buf = ""
+    while True:
+        chunk = proc.stdout.read(256) if proc.stdout else ""
+        if not chunk:
+            break
+        buf += chunk
+        while True:
+            m = re.search(r"[\r\n]", buf)
+            if not m:
+                break
+            line, buf = buf[:m.start()], buf[m.end():]
+            if line.strip():
+                lines.append(line)
+                if subprog:
+                    pm = re.match(r"\s*(\d+) / (\d+) \[", line)
+                    if pm and int(pm.group(2)):
+                        subprog(int(pm.group(1)) / int(pm.group(2)))
+    if buf.strip():
+        lines.append(buf)
+    proc.wait()
     big_shifts = 0
-    for line in re.split(r"[\r\n]+", (r.stdout or "") + (r.stderr or "")):
+    for line in lines:
         if re.search(r"shifted|ratio is|error", line):
             log("    " + line.strip())
         m = re.search(r"by (-?)(\d+):(\d\d):(\d\d)\.", line)
@@ -117,7 +157,7 @@ def _alass(video: Path, sub: Path, out: Path, log: Log, tr: Tr = _tr_fallback) -
     suspect = big_shifts >= 2
     if suspect:
         log(tr("c_sync_suspect"))
-    return r.returncode == 0 and out.exists(), suspect
+    return proc.returncode == 0 and out.exists(), suspect
 
 
 def _region_setup():
@@ -140,15 +180,19 @@ def _providers(cfg: dict, log: Log, tr: Tr):
 
 
 def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
-                   log: Log, tr: Tr, cancel: threading.Event, imdb_id: str | None = None):
+                   log: Log, tr: Tr, cancel: threading.Event, imdb_id: str | None = None,
+                   subprog: Callable[[float], None] | None = None):
     from babelfish import Language
     from subliminal import refine, save_subtitles, scan_video
     from subliminal.video import Episode
 
+    sp = subprog or (lambda f: None)
     got: dict[str, Path] = {}
     try:
+        sp(0.03)
         v = scan_video(str(video))
         refine(v, refiners=("hash",))
+        sp(0.1)
         if imdb_id:
             # imdb_id geht in die Provider-Query; bei Episoden zusätzlich als Serien-ID fürs Matching
             v.imdb_id = imdb_id
@@ -156,6 +200,7 @@ def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
                 v.series_imdb_id = imdb_id
         want = {Language.fromietf(l) for l in langs}
         found = pool.list_subtitles(v, want)
+        sp(0.25)
         minutes = _duration_min(video)
         ignore: list[str] = []
         for _attempt in range(MAX_ATTEMPTS):
@@ -178,6 +223,7 @@ def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
                 log(tr("c_got", lang=s.language.alpha2, rel=rel, prov=s.provider_name))
                 got[s.language.alpha2] = p
                 want.discard(s.language)
+        sp(0.35)
     except Exception as e:  # noqa: BLE001
         log(tr("c_dl_err", err=f"{type(e).__name__}: {e}"))
 
@@ -195,7 +241,7 @@ def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
             continue
         out = video.with_name(f"{video.stem}.{lang}{dl.suffix.lower()}")
         log(tr("c_syncing"))
-        ok, suspect = _alass(video, dl, out, log, tr)
+        ok, suspect = _alass(video, dl, out, log, tr, subprog=lambda f: sp(0.4 + 0.58 * f))
         if ok and suspect:
             res.suspect.append(f"{video.name}  [{lang}]")
             res.suspect_items.append((str(video), lang))
@@ -205,19 +251,21 @@ def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
             shutil.copyfile(dl, out)
             res.unsynced.append(f"{video.name}  [{lang}]")
             log(tr("c_sync_fail"))
+    sp(1.0)
 
 
 def run(folder: str, languages: list[str], cfg: dict, progress: Progress, log: Log,
-        cancel: threading.Event, tr: Tr = _tr_fallback) -> Result:
+        cancel: threading.Event, tr: Tr = _tr_fallback, frac: Frac | None = None,
+        imdb_id: str | None = None) -> Result:
     res = Result()
     try:
-        return _run(folder, languages, cfg, progress, log, cancel, tr, res)
+        return _run(folder, languages, cfg, progress, log, cancel, tr, frac, imdb_id, res)
     except Exception as e:  # noqa: BLE001 — alles in der GUI anzeigen statt stumm sterben
         res.error = f"{type(e).__name__}: {e}"
         return res
 
 
-def _run(folder, languages, cfg, progress, log, cancel, tr, res: Result) -> Result:
+def _run(folder, languages, cfg, progress, log, cancel, tr, frac, imdb_id, res: Result) -> Result:
     from subliminal import ProviderPool
 
     _region_setup()
@@ -248,20 +296,23 @@ def _run(folder, languages, cfg, progress, log, cancel, tr, res: Result) -> Resu
     tmp = Path(tempfile.mkdtemp(prefix="subsync-"))
     try:
         with ProviderPool(providers=providers, provider_configs=provider_configs) as pool:
+            total = len(todo)
             for i, (video, langs) in enumerate(todo, 1):
                 if cancel.is_set():
                     res.cancelled = True
                     break
-                progress(f"{video.name}", i, len(todo))
-                log(f"[{i}/{len(todo)}] {video.name}  [{', '.join(langs)}]")
-                _process_video(pool, video, langs, tmp, res, log, tr, cancel)
+                progress(f"{video.name}", i, total)
+                log(f"[{i}/{total}] {video.name}  [{', '.join(langs)}]")
+                sp = (lambda base: (lambda f: frac(min(1.0, (base + f) / total))))(i - 1) if frac else None
+                _process_video(pool, video, langs, tmp, res, log, tr, cancel,
+                               imdb_id=imdb_id, subprog=sp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return res
 
 
 def run_imdb(entries: list[tuple[str, list[str], str]], cfg: dict, progress: Progress, log: Log,
-             cancel: threading.Event, tr: Tr = _tr_fallback) -> Result:
+             cancel: threading.Event, tr: Tr = _tr_fallback, frac: Frac | None = None) -> Result:
     """Nachsuche per IMDb-ID: entries = [(Videopfad, Sprachen, tt-ID), …]."""
     res = Result()
     try:
@@ -271,14 +322,17 @@ def run_imdb(entries: list[tuple[str, list[str], str]], cfg: dict, progress: Pro
         tmp = Path(tempfile.mkdtemp(prefix="subsync-"))
         try:
             with ProviderPool(providers=providers, provider_configs=provider_configs) as pool:
+                total = len(entries)
                 for i, (path, langs, ttid) in enumerate(entries, 1):
                     if cancel.is_set():
                         res.cancelled = True
                         break
                     video = Path(path)
-                    progress(f"{video.name}", i, len(entries))
+                    progress(f"{video.name}", i, total)
                     log(tr("c_imdb_via", id=ttid, name=video.name))
-                    _process_video(pool, video, langs, tmp, res, log, tr, cancel, imdb_id=ttid)
+                    sp = (lambda base: (lambda f: frac(min(1.0, (base + f) / total))))(i - 1) if frac else None
+                    _process_video(pool, video, langs, tmp, res, log, tr, cancel,
+                                   imdb_id=ttid, subprog=sp)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
     except Exception as e:  # noqa: BLE001
