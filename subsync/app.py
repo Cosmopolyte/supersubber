@@ -1,5 +1,6 @@
 """Minimale Tkinter-GUI: Ordner (Drag & Drop), Untertitel-Sprachen, Start, Fortschritt, Ergebnis, Einstellungen.
-GUI-Sprache umschaltbar (de/ru/en) — siehe i18n.py. Farbschema angelehnt an vl-minisync."""
+GUI-Sprache umschaltbar (de/ru/en) — siehe i18n.py. Farbschema angelehnt an vl-minisync:
+dunkler Fenster-Hintergrund, Bereiche als gleichfarbige Karten darauf."""
 from __future__ import annotations
 
 import os
@@ -20,13 +21,13 @@ try:
 except ImportError:  # ohne Drag & Drop trotzdem lauffähig
     DND_FILES, _Root = None, tk.Tk
 
-FRAME = "#3d7d69"        # Fensterfläche (vl-minisync-Rahmen)
-FRAME_DARK = "#2f6152"
-SECTION_BG = os.environ.get("SUBSYNC_SECTION_BG") or FRAME   # Bereichs-Innenfläche (Experiment: zweiter Ton)
+BG = "#2c5c4e"           # Fenster-Hintergrund (dunkler) — trennt die Bereiche sichtbar
+CARD = "#3d7d69"         # Bereichs-Flächen (vl-minisync-Rahmenton)
+CARD_EDGE = "#245043"
 TEAL = "#00b0b0"         # Akzent (vl-minisync-Tray-Türkis)
 TEAL_DARK = "#008a8a"
 INK = "#1b3a36"          # dunkle Schrift auf hellen Flächen
-LIGHT = "#dcebe5"        # helle Schrift auf dunkler Fläche
+LIGHT = "#dcebe5"        # helle Schrift auf dunklen Flächen
 IDLE_BG = "#e9e9e6"      # Ladebalken/Log im Ruhezustand — leichtes Grau statt Weiß
 OK_LIGHT, WARN_LIGHT, ERR_LIGHT = "#9fe8bb", "#ffd97a", "#ff9d8f"
 GREY = "#8aa79d"
@@ -45,7 +46,7 @@ class CanvasBar(tk.Canvas):
 
     def __init__(self, master, height=22):
         super().__init__(master, height=height, highlightthickness=1,
-                         highlightbackground=FRAME_DARK, bg=IDLE_BG)
+                         highlightbackground=CARD_EDGE, bg=IDLE_BG)
         self._fraction = 0.0
         self._text = ""
         self._idle_text = ""
@@ -119,15 +120,16 @@ class App(_Root):
     def t(self, key: str, **kw) -> str:
         return i18n.tr(self.ui, key, **kw)
 
-    # ---- Stil (vl-minisync-Farben) ------------------------------------------
+    # ---- Stil ---------------------------------------------------------------
     def _style(self):
-        self.configure(bg=FRAME)
+        self.configure(bg=BG)
         s = ttk.Style(self)
         s.theme_use("clam")
-        s.configure(".", background=FRAME, foreground=LIGHT, font=("Segoe UI", 10))
-        s.configure("TFrame", background=FRAME)
-        s.configure("TLabel", background=FRAME, foreground=LIGHT)
-        s.configure("TButton", background="#f2f2f2", foreground=INK, bordercolor=FRAME_DARK,
+        s.configure(".", background=CARD, foreground=LIGHT, font=("Segoe UI", 10))
+        s.configure("TFrame", background=CARD)
+        s.configure("Bg.TFrame", background=BG)
+        s.configure("TLabel", background=CARD, foreground=LIGHT)
+        s.configure("TButton", background="#f2f2f2", foreground=INK, bordercolor=CARD_EDGE,
                     focuscolor="#f2f2f2", padding=(10, 2))
         s.map("TButton", background=[("active", "white"), ("pressed", "#d8d8d8")])
         s.configure("Square.TButton", padding=(6, 1))
@@ -135,19 +137,16 @@ class App(_Root):
         s.configure("Accent.TButton", background=TEAL, foreground="white", bordercolor=TEAL_DARK,
                     font=("Segoe UI", 10, "bold"), padding=(10, 2))
         s.map("Accent.TButton", background=[("active", TEAL_DARK), ("pressed", TEAL_DARK)])
-        s.configure("TMenubutton", background="white", foreground=INK, bordercolor=FRAME_DARK,
+        s.configure("TMenubutton", background="white", foreground=INK, bordercolor=CARD_EDGE,
                     arrowcolor=TEAL_DARK, padding=(10, 2))
-        s.configure("TEntry", fieldbackground="white", foreground=INK, bordercolor=FRAME_DARK, padding=(4, 2))
-        s.configure("TCombobox", fieldbackground="white", foreground=INK, bordercolor=FRAME_DARK,
+        s.configure("TEntry", fieldbackground="white", foreground=INK, bordercolor=CARD_EDGE, padding=(4, 2))
+        s.configure("TCombobox", fieldbackground="white", foreground=INK, bordercolor=CARD_EDGE,
                     arrowcolor=TEAL_DARK)
         s.map("TCombobox", fieldbackground=[("readonly", "white")], foreground=[("readonly", INK)])
         s.configure("Vertical.TScrollbar", background="#e8e8e8", troughcolor=IDLE_BG,
-                    bordercolor=FRAME_DARK, arrowcolor=INK)
-        # Bereichs-Stile (Innenfläche kann als zweiter Ton abweichen)
-        s.configure("Sec.TLabelframe", background=SECTION_BG, bordercolor=LIGHT, relief="groove")
-        s.configure("Sec.TLabelframe.Label", background=FRAME, foreground="white", font=("Segoe UI", 10, "bold"))
-        s.configure("Sec.TFrame", background=SECTION_BG)
-        s.configure("Sec.TLabel", background=SECTION_BG, foreground=LIGHT)
+                    bordercolor=CARD_EDGE, arrowcolor=INK)
+        s.configure("Card.TLabelframe", background=CARD, bordercolor=CARD_EDGE, relief="flat")
+        s.configure("Card.TLabelframe.Label", background=BG, foreground="white", font=("Segoe UI", 10, "bold"))
         self.option_add("*TCombobox*Listbox.background", "white")
         self.option_add("*TCombobox*Listbox.foreground", INK)
 
@@ -157,8 +156,8 @@ class App(_Root):
             w.destroy()
         self.title("subsync — Find & Sync Subtitles")
 
-        # Zahnrad in eigener Zeile ganz oben rechts
-        gearrow = ttk.Frame(self); gearrow.pack(fill="x", padx=10, pady=(8, 0))
+        # Zahnrad in eigener Zeile ganz oben rechts (auf dem Hintergrund)
+        gearrow = ttk.Frame(self, style="Bg.TFrame"); gearrow.pack(fill="x", padx=10, pady=(8, 6))
         try:
             self._gear_img = tk.PhotoImage(file=str(asset("gear.png")))
             gear = ttk.Button(gearrow, image=self._gear_img, style="Gear.TButton", command=self.settings)
@@ -166,14 +165,17 @@ class App(_Root):
             gear = ttk.Button(gearrow, text="⚙", width=3, style="Gear.TButton", command=self.settings)
         gear.pack(side="right")
 
-        top = ttk.Frame(self); top.pack(fill="x", padx=10, pady=(2, 4))
+        # ---- Karte 1: Bedienung
+        card1 = tk.Frame(self, bg=CARD)
+        card1.pack(fill="x", padx=10)
+        top = ttk.Frame(card1); top.pack(fill="x", padx=10, pady=(10, 2))
         ttk.Label(top, text=self.t("folder")).pack(side="left")
         self.folder_var = tk.StringVar(value=getattr(self, "folder_var", None) and self.folder_var.get() or self._pending_folder)
         ttk.Entry(top, textvariable=self.folder_var).pack(side="left", fill="x", expand=True, padx=6)
         ttk.Button(top, text="…", width=3, style="Square.TButton", command=self.browse).pack(side="left", fill="y")
 
-        self.drop = tk.Canvas(self, height=118, bg=FRAME, highlightthickness=0, cursor="hand2")
-        self.drop.pack(fill="x", padx=10, pady=(4, 6))
+        self.drop = tk.Canvas(card1, height=118, bg=CARD, highlightthickness=0, cursor="hand2")
+        self.drop.pack(fill="x", padx=10, pady=(4, 2))
         self.drop.bind("<Configure>", self._draw_drop)
         self.drop.bind("<Button-1>", lambda e: self.browse())
         if DND_FILES:
@@ -181,7 +183,7 @@ class App(_Root):
                 w.drop_target_register(DND_FILES)
                 w.dnd_bind("<<Drop>>", self.on_drop)
 
-        row = ttk.Frame(self); row.pack(fill="x", padx=10, pady=4)
+        row = ttk.Frame(card1); row.pack(fill="x", padx=10, pady=(2, 10))
         ttk.Label(row, text=self.t("subtitles")).pack(side="left")
         self.lang_sel: dict[str, tk.BooleanVar] = {}
         self.lang_btn = ttk.Menubutton(row, direction="below")
@@ -190,33 +192,40 @@ class App(_Root):
         self.start_btn = ttk.Button(row, text=self.t("start"), command=self.start, width=12, style="Accent.TButton")
         self.start_btn.pack(side="right")
 
-        # Unterer Bereich: Balken, Status, Ergebnis, Log — optisch getrennt wie in den Einstellungen
-        sec = ttk.Labelframe(self, text=self.t("sec_status"), style="Sec.TLabelframe", padding=8)
-        sec.pack(fill="both", expand=True, padx=10, pady=(6, 10))
+        # ---- Karte 2: Status (Balken, Statuszeile, Ergebnis, Log)
+        sec = ttk.Labelframe(self, text=self.t("sec_status"), style="Card.TLabelframe", padding=8)
+        sec.pack(fill="both", expand=True, padx=10, pady=(12, 10))
 
         self.bar = CanvasBar(sec)
-        self.bar.pack(fill="x", pady=(0, 3))
+        self.bar.pack(fill="x", pady=(0, 2))
         self.bar.idle(self.t("ready"))
-        srow = ttk.Frame(sec, style="Sec.TFrame"); srow.pack(fill="x")
-        self.spinner = tk.Label(srow, text="", font=("Segoe UI", 12), fg="white", width=2, bg=SECTION_BG)
+        srow = ttk.Frame(sec); srow.pack(fill="x")
+        self.spinner = tk.Label(srow, text="", font=("Segoe UI", 12), fg="white", width=2, bg=CARD)
         self.spinner.pack(side="left")
-        self.status = ttk.Label(srow, text="", style="Sec.TLabel")
+        self.status = ttk.Label(srow, text="")
         self.status.pack(side="left", fill="x")
         self.imdb_btn = ttk.Button(srow, text=self.t("btn_imdb"), command=self.imdb_dialog)
         # wird nur bei „nicht gefunden" eingeblendet
 
-        self.result = tk.Label(sec, text="", font=("Segoe UI", 13, "bold"), bg=SECTION_BG, fg="white")
-        self.result.pack(fill="x", pady=2)
+        self.result = tk.Label(sec, text="", font=("Segoe UI", 13, "bold"), bg=CARD, fg="white")
+        # wird nur mit Inhalt eingeblendet (sonst unnötiger Leerraum)
 
-        logf = ttk.Frame(sec, style="Sec.TFrame")
-        logf.pack(fill="both", expand=True)
-        self.log = tk.Text(logf, height=9, state="disabled", font=("Consolas", 9), wrap="word",
-                           relief="flat", highlightthickness=1, highlightbackground=FRAME_DARK,
+        self._logf = ttk.Frame(sec)
+        self._logf.pack(fill="both", expand=True, pady=(4, 0))
+        self.log = tk.Text(self._logf, height=9, state="disabled", font=("Consolas", 9), wrap="word",
+                           relief="flat", highlightthickness=1, highlightbackground=CARD_EDGE,
                            bg=IDLE_BG, fg=INK)
-        sb = ttk.Scrollbar(logf, orient="vertical", command=self.log.yview)
+        sb = ttk.Scrollbar(self._logf, orient="vertical", command=self.log.yview)
         self.log.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         self.log.pack(side="left", fill="both", expand=True)
+
+    def _set_result(self, text: str, fg: str):
+        if text:
+            self.result.config(text=text, fg=fg)
+            self.result.pack(fill="x", pady=(4, 2), before=self._logf)
+        else:
+            self.result.pack_forget()
 
     def _draw_drop(self, _event=None):
         c = self.drop
@@ -228,9 +237,9 @@ class App(_Root):
         c.create_rectangle(x0, y0, x1, y1, fill="white", width=0)
         c.create_rectangle(x0 + 12, y0 + 10, x1 - 12, y1 - 10, dash=(7, 4), outline=TEAL, width=2)
         cx, cy = w // 2, h // 2 - 14
-        c.create_rectangle(cx - 4, cy - 9, cx + 4, cy + 4, fill=FRAME, width=0)
-        c.create_polygon(cx - 10, cy + 4, cx + 10, cy + 4, cx, cy + 15, fill=FRAME, width=0)
-        c.create_text(cx, h // 2 + 20, text=self.t("drop_main"), font=("Segoe UI", 11, "bold"), fill=FRAME)
+        c.create_rectangle(cx - 4, cy - 9, cx + 4, cy + 4, fill=CARD, width=0)
+        c.create_polygon(cx - 10, cy + 4, cx + 10, cy + 4, cx, cy + 15, fill=CARD, width=0)
+        c.create_text(cx, h // 2 + 20, text=self.t("drop_main"), font=("Segoe UI", 11, "bold"), fill=CARD)
 
     def _build_lang_menu(self):
         menu = tk.Menu(self.lang_btn, tearoff=0)
@@ -264,7 +273,7 @@ class App(_Root):
         self.start_btn.config(text=self.t("cancel_run") if on else self.t("start"))
         if on:
             self.imdb_btn.pack_forget()
-            self.result.config(text="")
+            self._set_result("", "")
             self.after(100, self._poll)
             self.after(90, self._animate)
 
@@ -328,7 +337,7 @@ class App(_Root):
         self.spinner.config(text="")
         if res.error:
             self.bar.idle(self.t("error"))
-            self.result.config(text=f"✖  {res.error}", fg=ERR_LIGHT); self.status.config(text=""); return
+            self._set_result(f"✖  {res.error}", ERR_LIGHT); self.status.config(text=""); return
         self.bar.set(1.0, "100 %")
         self.status.config(text=self.t("done"))
         self._missing = {}
@@ -337,7 +346,7 @@ class App(_Root):
         if self._missing:
             self.imdb_btn.pack(side="right")
         if not res.synced and not res.unsynced and not res.missing and not res.noaccess and not res.cancelled:
-            self.result.config(text=self.t("res_all_have", n=res.skipped), fg=OK_LIGHT)
+            self._set_result(self.t("res_all_have", n=res.skipped), OK_LIGHT)
             return
         parts = [self.t("p_synced", n=len(res.synced))]
         if res.skipped: parts.append(self.t("p_existing", n=res.skipped))
@@ -346,7 +355,7 @@ class App(_Root):
         if res.noaccess: parts.append(self.t("p_noaccess", n=len(res.noaccess)))
         ok = not res.missing and not res.unsynced and not res.noaccess and not res.cancelled
         head = self.t("res_cancelled") if res.cancelled else self.t("res_done")
-        self.result.config(text=("✔  " if ok else "⚠  ") + head + ", ".join(parts), fg=OK_LIGHT if ok else WARN_LIGHT)
+        self._set_result(("✔  " if ok else "⚠  ") + head + ", ".join(parts), OK_LIGHT if ok else WARN_LIGHT)
         if res.missing:
             self._log(self.t("missing_hint"))
             for m in res.missing: self._log("  " + m)
@@ -357,7 +366,7 @@ class App(_Root):
     # ---- IMDb-Nachsuche ------------------------------------------------------
     def imdb_dialog(self):
         win = tk.Toplevel(self); win.title("IMDb"); win.resizable(False, False); win.grab_set()
-        win.configure(bg=FRAME)
+        win.configure(bg=CARD)
         try:
             win.iconbitmap(str(asset("icon.ico")))
         except tk.TclError:
@@ -423,40 +432,40 @@ class App(_Root):
     # ---- Einstellungen ------------------------------------------------------
     def settings(self):
         win = tk.Toplevel(self); win.title(self.t("st_title")); win.resizable(False, False); win.grab_set()
-        win.configure(bg=FRAME)
+        win.configure(bg=BG)
         try:
             win.iconbitmap(str(asset("icon.ico")))
         except tk.TclError:
             pass
-        outer = ttk.Frame(win, padding=14); outer.pack(fill="both", expand=True)
+        outer = ttk.Frame(win, padding=14, style="Bg.TFrame"); outer.pack(fill="both", expand=True)
 
         # -- App-Sprache
-        f1 = ttk.Labelframe(outer, text=self.t("sec_app_lang"), style="Sec.TLabelframe", padding=10)
+        f1 = ttk.Labelframe(outer, text=self.t("sec_app_lang"), style="Card.TLabelframe", padding=10)
         f1.pack(fill="x", pady=(0, 10))
         ui_box = ttk.Combobox(f1, state="readonly", width=18, values=list(i18n.UI_LANGS.values()))
         ui_box.set(i18n.UI_LANGS.get(self.ui, "English"))
         ui_box.pack(anchor="w")
 
         # -- OpenSubtitles-Account
-        f2 = ttk.Labelframe(outer, text=self.t("sec_account"), style="Sec.TLabelframe", padding=10)
+        f2 = ttk.Labelframe(outer, text=self.t("sec_account"), style="Card.TLabelframe", padding=10)
         f2.pack(fill="x", pady=(0, 10))
-        ttk.Label(f2, text=self.t("st_user"), style="Sec.TLabel").grid(row=0, column=0, sticky="w", pady=3)
+        ttk.Label(f2, text=self.t("st_user")).grid(row=0, column=0, sticky="w", pady=3)
         user = tk.StringVar(value=self.cfg["opensubtitles_user"])
         ttk.Entry(f2, textvariable=user, width=30).grid(row=0, column=1, sticky="w", pady=3, padx=(8, 0))
-        ttk.Label(f2, text=self.t("st_pw"), style="Sec.TLabel").grid(row=1, column=0, sticky="w", pady=3)
+        ttk.Label(f2, text=self.t("st_pw")).grid(row=1, column=0, sticky="w", pady=3)
         pw = tk.StringVar(value=config.decrypt(self.cfg["opensubtitles_password"]))
         ttk.Entry(f2, textvariable=pw, width=30, show="•").grid(row=1, column=1, sticky="w", pady=3, padx=(8, 0))
-        reg = tk.Label(f2, text="🔗 " + self.t("st_register"), fg="#bfffff", bg=SECTION_BG,
+        reg = tk.Label(f2, text="🔗 " + self.t("st_register"), fg="#bfffff", bg=CARD,
                        cursor="hand2", font=("Segoe UI", 9, "underline"))
         reg.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 2))
         reg.bind("<Button-1>", lambda e: webbrowser.open(OPENSUBTITLES_URL))
-        ttk.Label(f2, text=self.t("st_pw_note"), foreground=GREY, style="Sec.TLabel",
+        ttk.Label(f2, text=self.t("st_pw_note"), foreground=GREY,
                   font=("Segoe UI", 8)).grid(row=3, column=0, columnspan=2, sticky="w")
 
         # -- Untertitel-Sprachen
-        f3 = ttk.Labelframe(outer, text=self.t("sec_sub_langs"), style="Sec.TLabelframe", padding=10)
+        f3 = ttk.Labelframe(outer, text=self.t("sec_sub_langs"), style="Card.TLabelframe", padding=10)
         f3.pack(fill="x", pady=(0, 10))
-        ttk.Label(f3, text=self.t("st_langs"), style="Sec.TLabel").pack(anchor="w")
+        ttk.Label(f3, text=self.t("st_langs")).pack(anchor="w")
         known = tk.StringVar(value=", ".join(self.cfg["known_languages"]))
         ttk.Entry(f3, textvariable=known, width=42).pack(anchor="w", pady=(3, 0))
 
@@ -480,7 +489,7 @@ class App(_Root):
             config.save(self.cfg)
             win.destroy()
             self._build()
-        b = ttk.Frame(outer); b.pack(pady=(2, 0))
+        b = ttk.Frame(outer, style="Bg.TFrame"); b.pack(pady=(2, 0))
         ttk.Button(b, text=self.t("st_save"), command=ok, style="Accent.TButton").pack(side="left", padx=4)
         ttk.Button(b, text=self.t("st_cancel"), command=win.destroy).pack(side="left", padx=4)
 
