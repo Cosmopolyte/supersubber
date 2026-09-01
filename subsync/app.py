@@ -28,7 +28,7 @@ TEAL = "#00b0b0"         # Akzent (vl-minisync-Tray-Türkis)
 TEAL_DARK = "#008a8a"
 INK = "#1b3a36"          # dunkle Schrift auf hellen Flächen
 LIGHT = "#dcebe5"        # helle Schrift auf dunklen Flächen
-IDLE_BG = "#e9e9e6"      # Ladebalken/Log im Ruhezustand — leichtes Grau statt Weiß
+IDLE_BG = "#e2e2dd"      # Ladebalken/Log im Ruhezustand — leichtes Grau statt Weiß
 OK_LIGHT, WARN_LIGHT, ERR_LIGHT = "#9fe8bb", "#ffd97a", "#ff9d8f"
 GREY = "#8aa79d"
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -84,7 +84,7 @@ class CanvasBar(tk.Canvas):
                 self.create_text(w // 2, h // 2, text=self._text, fill="white" if self._fraction > 0.55 else TEAL_DARK,
                                  font=("Segoe UI", 9, "bold"))
         elif self._idle_text:
-            self.create_text(w // 2, h // 2, text=self._idle_text, fill="#8a8a86", font=("Segoe UI", 9))
+            self.create_text(w // 2, h // 2, text=self._idle_text, fill="#4e5b56", font=("Segoe UI", 9))
 
 
 class App(_Root):
@@ -145,8 +145,6 @@ class App(_Root):
         s.map("TCombobox", fieldbackground=[("readonly", "white")], foreground=[("readonly", INK)])
         s.configure("Vertical.TScrollbar", background="#e8e8e8", troughcolor=IDLE_BG,
                     bordercolor=CARD_EDGE, arrowcolor=INK)
-        s.configure("Card.TLabelframe", background=CARD, bordercolor=CARD_EDGE, relief="flat")
-        s.configure("Card.TLabelframe.Label", background=BG, foreground="white", font=("Segoe UI", 10, "bold"))
         self.option_add("*TCombobox*Listbox.background", "white")
         self.option_add("*TCombobox*Listbox.foreground", INK)
 
@@ -169,13 +167,13 @@ class App(_Root):
         card1 = tk.Frame(self, bg=CARD)
         card1.pack(fill="x", padx=10)
         top = ttk.Frame(card1); top.pack(fill="x", padx=10, pady=(10, 2))
-        ttk.Label(top, text=self.t("folder")).pack(side="left")
+        ttk.Label(top, text=self.t("folder"), width=11).pack(side="left")
         self.folder_var = tk.StringVar(value=getattr(self, "folder_var", None) and self.folder_var.get() or self._pending_folder)
-        ttk.Entry(top, textvariable=self.folder_var).pack(side="left", fill="x", expand=True, padx=6)
+        ttk.Entry(top, textvariable=self.folder_var).pack(side="left", fill="x", expand=True, padx=(0, 6))
         ttk.Button(top, text="…", width=3, style="Square.TButton", command=self.browse).pack(side="left", fill="y")
 
-        self.drop = tk.Canvas(card1, height=118, bg=CARD, highlightthickness=0, cursor="hand2")
-        self.drop.pack(fill="x", padx=10, pady=(4, 2))
+        self.drop = tk.Canvas(card1, height=130, bg=CARD, highlightthickness=0, cursor="hand2")
+        self.drop.pack(fill="x", padx=10, pady=(6, 12))
         self.drop.bind("<Configure>", self._draw_drop)
         self.drop.bind("<Button-1>", lambda e: self.browse())
         if DND_FILES:
@@ -183,23 +181,23 @@ class App(_Root):
                 w.drop_target_register(DND_FILES)
                 w.dnd_bind("<<Drop>>", self.on_drop)
 
-        row = ttk.Frame(card1); row.pack(fill="x", padx=10, pady=(2, 10))
-        ttk.Label(row, text=self.t("subtitles")).pack(side="left")
+        row = ttk.Frame(card1); row.pack(fill="x", padx=10, pady=(0, 12))
+        ttk.Label(row, text=self.t("subtitles"), width=11).pack(side="left")
         self.lang_sel: dict[str, tk.BooleanVar] = {}
         self.lang_btn = ttk.Menubutton(row, direction="below")
-        self.lang_btn.pack(side="left", padx=6)
+        self.lang_btn.pack(side="left")
         self._build_lang_menu()
         self.start_btn = ttk.Button(row, text=self.t("start"), command=self.start, width=12, style="Accent.TButton")
         self.start_btn.pack(side="right")
 
-        # ---- Karte 2: Status (Balken, Statuszeile, Ergebnis, Log)
-        sec = ttk.Labelframe(self, text=self.t("sec_status"), style="Card.TLabelframe", padding=8)
-        sec.pack(fill="both", expand=True, padx=10, pady=(12, 10))
+        # ---- Karte 2: Balken, Statuszeile, Ergebnis, Log (ohne Titel)
+        sec = tk.Frame(self, bg=CARD)
+        sec.pack(fill="both", expand=True, padx=10, pady=(22, 20))
 
         self.bar = CanvasBar(sec)
-        self.bar.pack(fill="x", pady=(0, 2))
+        self.bar.pack(fill="x", padx=10, pady=(10, 2))
         self.bar.idle(self.t("ready"))
-        srow = ttk.Frame(sec); srow.pack(fill="x")
+        srow = ttk.Frame(sec); srow.pack(fill="x", padx=10)
         self.spinner = tk.Label(srow, text="", font=("Segoe UI", 12), fg="white", width=2, bg=CARD)
         self.spinner.pack(side="left")
         self.status = ttk.Label(srow, text="")
@@ -211,7 +209,7 @@ class App(_Root):
         # wird nur mit Inhalt eingeblendet (sonst unnötiger Leerraum)
 
         self._logf = ttk.Frame(sec)
-        self._logf.pack(fill="both", expand=True, pady=(4, 0))
+        self._logf.pack(fill="both", expand=True, padx=10, pady=(4, 10))
         self.log = tk.Text(self._logf, height=9, state="disabled", font=("Consolas", 9), wrap="word",
                            relief="flat", highlightthickness=1, highlightbackground=CARD_EDGE,
                            bg=IDLE_BG, fg=INK)
@@ -223,7 +221,7 @@ class App(_Root):
     def _set_result(self, text: str, fg: str):
         if text:
             self.result.config(text=text, fg=fg)
-            self.result.pack(fill="x", pady=(4, 2), before=self._logf)
+            self.result.pack(fill="x", padx=10, pady=(4, 0), before=self._logf)
         else:
             self.result.pack_forget()
 
@@ -231,15 +229,16 @@ class App(_Root):
         c = self.drop
         c.delete("all")
         w, h = c.winfo_width(), c.winfo_height()
-        bw = min(470, max(300, w - 140))          # nicht volle Breite
+        bw = min(380, max(280, w - 240))          # deutlich schmaler als das Fenster
         x0, x1 = (w - bw) // 2, (w + bw) // 2
         y0, y1 = 2, h - 2
         c.create_rectangle(x0, y0, x1, y1, fill="white", width=0)
         c.create_rectangle(x0 + 12, y0 + 10, x1 - 12, y1 - 10, dash=(7, 4), outline=TEAL, width=2)
-        cx, cy = w // 2, h // 2 - 14
+        cx, cy = w // 2, h // 2 - 26
         c.create_rectangle(cx - 4, cy - 9, cx + 4, cy + 4, fill=CARD, width=0)
         c.create_polygon(cx - 10, cy + 4, cx + 10, cy + 4, cx, cy + 15, fill=CARD, width=0)
-        c.create_text(cx, h // 2 + 20, text=self.t("drop_main"), font=("Segoe UI", 11, "bold"), fill=CARD)
+        c.create_text(cx, h // 2 + 22, text=self.t("drop_main"), font=("Segoe UI", 11, "bold"),
+                      fill=CARD, justify="center")
 
     def _build_lang_menu(self):
         menu = tk.Menu(self.lang_btn, tearoff=0)
@@ -439,35 +438,40 @@ class App(_Root):
             pass
         outer = ttk.Frame(win, padding=14, style="Bg.TFrame"); outer.pack(fill="both", expand=True)
 
+        def card(heading: str) -> tk.Frame:
+            f = tk.Frame(outer, bg=CARD)
+            f.pack(fill="x", pady=(0, 14))
+            tk.Label(f, text=heading, bg=CARD, fg="white", font=("Segoe UI", 10, "bold"))\
+                .pack(anchor="w", padx=10, pady=(8, 4))
+            return f
+
         # -- App-Sprache
-        f1 = ttk.Labelframe(outer, text=self.t("sec_app_lang"), style="Card.TLabelframe", padding=10)
-        f1.pack(fill="x", pady=(0, 10))
+        f1 = card(self.t("sec_app_lang"))
         ui_box = ttk.Combobox(f1, state="readonly", width=18, values=list(i18n.UI_LANGS.values()))
         ui_box.set(i18n.UI_LANGS.get(self.ui, "English"))
-        ui_box.pack(anchor="w")
+        ui_box.pack(anchor="w", padx=10, pady=(0, 10))
 
         # -- OpenSubtitles-Account
-        f2 = ttk.Labelframe(outer, text=self.t("sec_account"), style="Card.TLabelframe", padding=10)
-        f2.pack(fill="x", pady=(0, 10))
-        ttk.Label(f2, text=self.t("st_user")).grid(row=0, column=0, sticky="w", pady=3)
+        f2 = card(self.t("sec_account"))
+        g = ttk.Frame(f2); g.pack(fill="x", padx=10, pady=(0, 10))
+        ttk.Label(g, text=self.t("st_user")).grid(row=0, column=0, sticky="w", pady=3)
         user = tk.StringVar(value=self.cfg["opensubtitles_user"])
-        ttk.Entry(f2, textvariable=user, width=30).grid(row=0, column=1, sticky="w", pady=3, padx=(8, 0))
-        ttk.Label(f2, text=self.t("st_pw")).grid(row=1, column=0, sticky="w", pady=3)
+        ttk.Entry(g, textvariable=user, width=30).grid(row=0, column=1, sticky="w", pady=3, padx=(8, 0))
+        ttk.Label(g, text=self.t("st_pw")).grid(row=1, column=0, sticky="w", pady=3)
         pw = tk.StringVar(value=config.decrypt(self.cfg["opensubtitles_password"]))
-        ttk.Entry(f2, textvariable=pw, width=30, show="•").grid(row=1, column=1, sticky="w", pady=3, padx=(8, 0))
-        reg = tk.Label(f2, text="🔗 " + self.t("st_register"), fg="#bfffff", bg=CARD,
+        ttk.Entry(g, textvariable=pw, width=30, show="•").grid(row=1, column=1, sticky="w", pady=3, padx=(8, 0))
+        reg = tk.Label(g, text="🔗 " + self.t("st_register"), fg="#bfffff", bg=CARD,
                        cursor="hand2", font=("Segoe UI", 9, "underline"))
         reg.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 2))
         reg.bind("<Button-1>", lambda e: webbrowser.open(OPENSUBTITLES_URL))
-        ttk.Label(f2, text=self.t("st_pw_note"), foreground=GREY,
+        ttk.Label(g, text=self.t("st_pw_note"), foreground=GREY,
                   font=("Segoe UI", 8)).grid(row=3, column=0, columnspan=2, sticky="w")
 
         # -- Untertitel-Sprachen
-        f3 = ttk.Labelframe(outer, text=self.t("sec_sub_langs"), style="Card.TLabelframe", padding=10)
-        f3.pack(fill="x", pady=(0, 10))
-        ttk.Label(f3, text=self.t("st_langs")).pack(anchor="w")
+        f3 = card(self.t("sec_sub_langs"))
+        ttk.Label(f3, text=self.t("st_langs")).pack(anchor="w", padx=10)
         known = tk.StringVar(value=", ".join(self.cfg["known_languages"]))
-        ttk.Entry(f3, textvariable=known, width=42).pack(anchor="w", pady=(3, 0))
+        ttk.Entry(f3, textvariable=known, width=42).pack(anchor="w", padx=10, pady=(3, 10))
 
         def ok():
             from babelfish import Language

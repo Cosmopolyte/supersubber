@@ -19,7 +19,7 @@ SUB_LANG_NAMES = {
 STRINGS = {
     "de": {
         "folder": "Ordner:",
-        "drop_main": "Ordner mit Filmen oder Serien hierher ziehen",
+        "drop_main": "Ordner mit Filmen oder Serien\nhierher ziehen",
         "subtitles": "Untertitel:",
         "start": "Start",
         "cancel_run": "Abbrechen",
@@ -74,7 +74,7 @@ STRINGS = {
     },
     "ru": {
         "folder": "Папка:",
-        "drop_main": "Перетащите сюда папку с фильмами или сериалом",
+        "drop_main": "Перетащите сюда папку\nс фильмами или сериалом",
         "subtitles": "Субтитры:",
         "start": "Старт",
         "cancel_run": "Отмена",
@@ -128,7 +128,7 @@ STRINGS = {
     },
     "en": {
         "folder": "Folder:",
-        "drop_main": "Drag a folder with movies or a series here",
+        "drop_main": "Drag a folder with movies\nor a series here",
         "subtitles": "Subtitles:",
         "start": "Start",
         "cancel_run": "Cancel",
