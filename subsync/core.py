@@ -92,7 +92,7 @@ def _cue_count(sub: Path) -> int:
         return 0
 
 
-def _alass(video: Path, sub: Path, out: Path, log: Log) -> bool:
+def _alass(video: Path, sub: Path, out: Path, log: Log, tr: Tr = _tr_fallback) -> bool:
     b = bin_dir()
     env = dict(os.environ, ALASS_FFMPEG_PATH=str(b / "ffmpeg.exe"), ALASS_FFPROBE_PATH=str(b / "ffprobe.exe"))
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
@@ -103,9 +103,16 @@ def _alass(video: Path, sub: Path, out: Path, log: Log) -> bool:
     except OSError as e:
         log(f"    alass: {e}")
         return False
+    big_shifts = 0
     for line in re.split(r"[\r\n]+", (r.stdout or "") + (r.stderr or "")):
         if re.search(r"shifted|ratio is|error", line):
             log("    " + line.strip())
+        m = re.search(r"by (-?)(\d+):(\d\d):(\d\d)\.", line)
+        if m and int(m.group(2)) * 3600 + int(m.group(3)) * 60 + int(m.group(4)) > 300:
+            big_shifts += 1
+    if big_shifts >= 3:
+        # Viele Blöcke um Minuten verschoben → Sub gehört vermutlich zu einem anderen Film/Schnitt
+        log(tr("c_sync_suspect"))
     return r.returncode == 0 and out.exists()
 
 
@@ -139,10 +146,10 @@ def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
         v = scan_video(str(video))
         refine(v, refiners=("hash",))
         if imdb_id:
+            # imdb_id geht in die Provider-Query; bei Episoden zusätzlich als Serien-ID fürs Matching
+            v.imdb_id = imdb_id
             if isinstance(v, Episode):
                 v.series_imdb_id = imdb_id
-            else:
-                v.imdb_id = imdb_id
         want = {Language.fromietf(l) for l in langs}
         found = pool.list_subtitles(v, want)
         minutes = _duration_min(video)
@@ -181,7 +188,7 @@ def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
             res.missing_items.append((str(video), lang))
             continue
         out = video.with_name(f"{video.stem}.{lang}{dl.suffix.lower()}")
-        if _alass(video, dl, out, log):
+        if _alass(video, dl, out, log, tr):
             res.synced.append(f"{video.name}  [{lang}]")
         else:
             shutil.copyfile(dl, out)

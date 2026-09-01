@@ -11,7 +11,9 @@ Unter der Haube: [subliminal](https://github.com/Diaoul/subliminal) (Download, P
 3. Fortschritt pro Episode im Fenster; am Ende ✔ mit Zusammenfassung. Videos, die schon Untertitel in der Sprache haben, werden übersprungen — mehrfaches Ausführen ist unkritisch.
 4. `subsync.exe <Ordner> [--lang ru,de]` startet direkt mit diesem Ordner.
 
-Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar (Auswahl oben rechts).
+Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar (⚙ → App-Sprache). Beim ersten Start wird die Windows-Anzeigesprache übernommen, sonst Englisch.
+
+**IMDb-Nachsuche:** Wird ein Video nicht erkannt, erscheint nach dem Lauf der Button „Specify IMDb ID…" — dort IMDb-ID oder -Link (z. B. `tt0069697` oder die IMDb-URL) eintragen und erneut suchen lassen. Bei Serien die IMDb-ID der Serie angeben. Findet auch das nichts, gibt es für dieses Video keine herunterladbaren Untertitel in der Sprache.
 
 **Einstellungen:** OpenSubtitles.com-Login (Free-Account = 20 Downloads/Tag, „?" öffnet die Registrierung; Passwort per Windows DPAPI verschlüsselt in `%APPDATA%\subsync\config.json`), Liste der angebotenen Untertitel-Sprachen (ISO-Kürzel, werden validiert).
 
