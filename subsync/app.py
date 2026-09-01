@@ -1,5 +1,5 @@
 """Minimale Tkinter-GUI: Ordner (Drag & Drop), Untertitel-Sprachen, Start, Fortschritt, Ergebnis, Einstellungen.
-GUI-Sprache umschaltbar (de/ru/en) — siehe i18n.py."""
+GUI-Sprache umschaltbar (de/ru/en) — siehe i18n.py. Farbschema angelehnt an vl-minisync."""
 from __future__ import annotations
 
 import os
@@ -19,8 +19,14 @@ try:
 except ImportError:  # ohne Drag & Drop trotzdem lauffähig
     DND_FILES, _Root = None, tk.Tk
 
-TEAL, TEAL_DARK, TEAL_BG, TEAL_MID = "#14b8a6", "#0f766e", "#e4f5f2", "#99d9d0"
-GREEN, RED, AMBER, GREY = "#2e8b57", "#c0392b", "#b8860b", "#666"
+FRAME = "#3d7d69"        # Fensterfläche (vl-minisync-Rahmen)
+FRAME_DARK = "#2f6152"
+TEAL = "#00b0b0"         # Akzent (vl-minisync-Tray-Türkis)
+TEAL_DARK = "#008a8a"
+INK = "#1b3a36"          # dunkle Schrift auf hellen Flächen
+LIGHT = "#dcebe5"        # helle Schrift auf dunkler Fläche
+OK_LIGHT, WARN_LIGHT, ERR_LIGHT = "#9fe8bb", "#ffd97a", "#ff9d8f"
+GREY = "#8aa79d"
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 OPENSUBTITLES_URL = "https://www.opensubtitles.com"
 
@@ -35,7 +41,7 @@ class CanvasBar(tk.Canvas):
 
     def __init__(self, master, height=22):
         super().__init__(master, height=height, highlightthickness=1,
-                         highlightbackground=TEAL_MID, bg="white")
+                         highlightbackground=FRAME_DARK, bg="white")
         self._fraction = 0.0
         self._text = ""
         self._pulse_pos = None
@@ -104,26 +110,33 @@ class App(_Root):
     def t(self, key: str, **kw) -> str:
         return i18n.tr(self.ui, key, **kw)
 
-    # ---- Stil (Teal wie vl-minisync) ----------------------------------------
+    # ---- Stil (vl-minisync-Farben) ------------------------------------------
     def _style(self):
-        self.configure(bg=TEAL_BG)
+        self.configure(bg=FRAME)
         s = ttk.Style(self)
         s.theme_use("clam")
-        s.configure(".", background=TEAL_BG, foreground="#1b3a36", font=("Segoe UI", 10))
-        s.configure("TFrame", background=TEAL_BG)
-        s.configure("TLabel", background=TEAL_BG)
-        s.configure("TButton", background="white", foreground=TEAL_DARK, bordercolor=TEAL_MID,
-                    focuscolor=TEAL_BG, padding=(10, 4))
-        s.map("TButton", background=[("active", "#f0faf8"), ("pressed", TEAL_MID)])
+        s.configure(".", background=FRAME, foreground=LIGHT, font=("Segoe UI", 10))
+        s.configure("TFrame", background=FRAME)
+        s.configure("TLabel", background=FRAME, foreground=LIGHT)
+        s.configure("TButton", background="#f2f2f2", foreground=INK, bordercolor=FRAME_DARK,
+                    focuscolor="#f2f2f2", padding=(10, 2))
+        s.map("TButton", background=[("active", "white"), ("pressed", "#d8d8d8")])
+        s.configure("Square.TButton", padding=(6, 1))
         s.configure("Accent.TButton", background=TEAL, foreground="white", bordercolor=TEAL_DARK,
-                    font=("Segoe UI", 10, "bold"))
+                    font=("Segoe UI", 10, "bold"), padding=(10, 2))
         s.map("Accent.TButton", background=[("active", TEAL_DARK), ("pressed", TEAL_DARK)])
-        s.configure("TMenubutton", background="white", foreground="#1b3a36", bordercolor=TEAL_MID,
-                    arrowcolor=TEAL_DARK, padding=(10, 4))
-        s.configure("TEntry", fieldbackground="white", bordercolor=TEAL_MID)
-        s.configure("TCombobox", fieldbackground="white", bordercolor=TEAL_MID, arrowcolor=TEAL_DARK)
-        s.configure("Vertical.TScrollbar", background=TEAL_MID, troughcolor=TEAL_BG, bordercolor=TEAL_BG,
+        s.configure("TMenubutton", background="white", foreground=INK, bordercolor=FRAME_DARK,
+                    arrowcolor=TEAL_DARK, padding=(10, 2))
+        s.configure("TEntry", fieldbackground="white", foreground=INK, bordercolor=FRAME_DARK, padding=(4, 2))
+        s.configure("TCombobox", fieldbackground="white", foreground=INK, bordercolor=FRAME_DARK,
                     arrowcolor=TEAL_DARK)
+        s.map("TCombobox", fieldbackground=[("readonly", "white")], foreground=[("readonly", INK)])
+        s.configure("Vertical.TScrollbar", background="#e8e8e8", troughcolor="white",
+                    bordercolor=FRAME_DARK, arrowcolor=INK)
+        s.configure("TLabelframe", background=FRAME, bordercolor=LIGHT, relief="groove")
+        s.configure("TLabelframe.Label", background=FRAME, foreground="white", font=("Segoe UI", 10, "bold"))
+        self.option_add("*TCombobox*Listbox.background", "white")
+        self.option_add("*TCombobox*Listbox.foreground", INK)
 
     # ---- Aufbau -------------------------------------------------------------
     def _build(self):
@@ -135,12 +148,9 @@ class App(_Root):
         ttk.Label(top, text=self.t("folder")).pack(side="left")
         self.folder_var = tk.StringVar(value=getattr(self, "folder_var", None) and self.folder_var.get() or self._pending_folder)
         ttk.Entry(top, textvariable=self.folder_var).pack(side="left", fill="x", expand=True, padx=6)
-        ttk.Button(top, text="…", width=3, command=self.browse).pack(side="left", padx=(0, 8))
-        self.ui_box = ttk.Combobox(top, state="readonly", width=9,
-                                   values=list(i18n.UI_LANGS.values()))
-        self.ui_box.set(i18n.UI_LANGS.get(self.ui, "Deutsch"))
-        self.ui_box.bind("<<ComboboxSelected>>", self._switch_ui)
-        self.ui_box.pack(side="right")
+        ttk.Button(top, text="…", width=3, style="Square.TButton", command=self.browse).pack(side="left", fill="y", padx=(0, 8))
+        gear = ttk.Button(top, text="⚙", width=3, style="Square.TButton", command=self.settings)
+        gear.pack(side="right", fill="y")
 
         self.drop = tk.Canvas(self, height=92, bg="white", highlightthickness=0, cursor="hand2")
         self.drop.pack(fill="x", padx=10, pady=(2, 6))
@@ -157,25 +167,24 @@ class App(_Root):
         self.lang_btn = ttk.Menubutton(row, direction="below")
         self.lang_btn.pack(side="left", padx=6)
         self._build_lang_menu()
-        ttk.Button(row, text=self.t("settings"), command=self.settings).pack(side="right")
         self.start_btn = ttk.Button(row, text=self.t("start"), command=self.start, width=12, style="Accent.TButton")
-        self.start_btn.pack(side="right", padx=6)
+        self.start_btn.pack(side="right")
 
         self.bar = CanvasBar(self)
         self.bar.pack(fill="x", padx=10, pady=(8, 2))
         srow = ttk.Frame(self); srow.pack(fill="x", padx=10)
-        self.spinner = tk.Label(srow, text="", font=("Segoe UI", 12), fg=TEAL_DARK, width=2, bg=TEAL_BG)
+        self.spinner = tk.Label(srow, text="", font=("Segoe UI", 12), fg="white", width=2, bg=FRAME)
         self.spinner.pack(side="left")
-        self.status = ttk.Label(srow, text=self.t("ready"), foreground=GREY)
+        self.status = ttk.Label(srow, text=self.t("ready"), foreground=LIGHT)
         self.status.pack(side="left", fill="x")
 
-        self.result = tk.Label(self, text="", font=("Segoe UI", 14, "bold"), bg=TEAL_BG)
+        self.result = tk.Label(self, text="", font=("Segoe UI", 14, "bold"), bg=FRAME, fg="white")
         self.result.pack(fill="x", padx=10, pady=4)
 
         logf = ttk.Frame(self)
         logf.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         self.log = tk.Text(logf, height=10, state="disabled", font=("Consolas", 9), wrap="word",
-                           relief="flat", highlightthickness=1, highlightbackground=TEAL_MID, bg="white")
+                           relief="flat", highlightthickness=1, highlightbackground=FRAME_DARK, bg="white", fg=INK)
         sb = ttk.Scrollbar(logf, orient="vertical", command=self.log.yview)
         self.log.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
@@ -186,9 +195,12 @@ class App(_Root):
         c.delete("all")
         w, h = c.winfo_width(), c.winfo_height()
         c.create_rectangle(5, 5, w - 5, h - 5, dash=(7, 4), outline=TEAL, width=2)
-        c.create_text(w // 2, h // 2 - 16, text="⬇", font=("Segoe UI", 20, "bold"), fill=TEAL_DARK)
-        c.create_text(w // 2, h // 2 + 14, text=self.t("drop_main"), font=("Segoe UI", 11, "bold"), fill=TEAL_DARK)
-        c.create_text(w // 2, h // 2 + 33, text=self.t("drop_sub"), font=("Segoe UI", 9), fill=GREY)
+        # Pfeil nach unten, gezeichnet statt als Font-Glyph (rendert überall gleich)
+        cx, cy = w // 2, h // 2 - 22
+        c.create_rectangle(cx - 4, cy - 8, cx + 4, cy + 4, fill=FRAME, width=0)
+        c.create_polygon(cx - 10, cy + 4, cx + 10, cy + 4, cx, cy + 14, fill=FRAME, width=0)
+        c.create_text(w // 2, h // 2 + 14, text=self.t("drop_main"), font=("Segoe UI", 11, "bold"), fill=FRAME)
+        c.create_text(w // 2, h // 2 + 33, text=self.t("drop_sub"), font=("Segoe UI", 9), fill="#7a7a7a")
 
     def _build_lang_menu(self):
         menu = tk.Menu(self.lang_btn, tearoff=0)
@@ -205,13 +217,6 @@ class App(_Root):
     def _update_lang_btn(self):
         sel = [i18n.lang_name(self.ui, c) for c, v in self.lang_sel.items() if v.get()]
         self.lang_btn.configure(text=", ".join(sel) if sel else "—")
-
-    def _switch_ui(self, _event=None):
-        name = self.ui_box.get()
-        code = next((c for c, n in i18n.UI_LANGS.items() if n == name), "de")
-        self.cfg["ui_language"] = code
-        config.save(self.cfg)
-        self._build()
 
     # ---- Aktionen -----------------------------------------------------------
     def browse(self):
@@ -287,11 +292,11 @@ class App(_Root):
         self.spinner.config(text="")
         if res.error:
             self.bar.reset()
-            self.result.config(text=f"✖  {res.error}", fg=RED); self.status.config(text=self.t("error")); return
+            self.result.config(text=f"✖  {res.error}", fg=ERR_LIGHT); self.status.config(text=self.t("error")); return
         self.bar.set(1.0, "100 %")
         self.status.config(text=self.t("done"))
         if not res.synced and not res.unsynced and not res.missing and not res.noaccess and not res.cancelled:
-            self.result.config(text=self.t("res_all_have", n=res.skipped), fg=GREEN)
+            self.result.config(text=self.t("res_all_have", n=res.skipped), fg=OK_LIGHT)
             return
         parts = [self.t("p_synced", n=len(res.synced))]
         if res.skipped: parts.append(self.t("p_existing", n=res.skipped))
@@ -300,7 +305,7 @@ class App(_Root):
         if res.noaccess: parts.append(self.t("p_noaccess", n=len(res.noaccess)))
         ok = not res.missing and not res.unsynced and not res.noaccess and not res.cancelled
         head = self.t("res_cancelled") if res.cancelled else self.t("res_done")
-        self.result.config(text=("✔  " if ok else "⚠  ") + head + ", ".join(parts), fg=GREEN if ok else AMBER)
+        self.result.config(text=("✔  " if ok else "⚠  ") + head + ", ".join(parts), fg=OK_LIGHT if ok else WARN_LIGHT)
         if res.missing:
             self._log(self.t("missing_hint"))
             for m in res.missing: self._log("  " + m)
@@ -311,29 +316,42 @@ class App(_Root):
     # ---- Einstellungen ------------------------------------------------------
     def settings(self):
         win = tk.Toplevel(self); win.title(self.t("st_title")); win.resizable(False, False); win.grab_set()
-        win.configure(bg=TEAL_BG)
+        win.configure(bg=FRAME)
         try:
             win.iconbitmap(str(asset("icon.ico")))
         except tk.TclError:
             pass
-        f = ttk.Frame(win, padding=12); f.pack()
-        ttk.Label(f, text=self.t("st_user")).grid(row=0, column=0, sticky="w", pady=3)
+        outer = ttk.Frame(win, padding=14); outer.pack(fill="both", expand=True)
+
+        # -- App-Sprache
+        f1 = ttk.Labelframe(outer, text=self.t("sec_app_lang"), padding=10)
+        f1.pack(fill="x", pady=(0, 10))
+        ui_box = ttk.Combobox(f1, state="readonly", width=18, values=list(i18n.UI_LANGS.values()))
+        ui_box.set(i18n.UI_LANGS.get(self.ui, "Deutsch"))
+        ui_box.pack(anchor="w")
+
+        # -- OpenSubtitles-Account
+        f2 = ttk.Labelframe(outer, text=self.t("sec_account"), padding=10)
+        f2.pack(fill="x", pady=(0, 10))
+        ttk.Label(f2, text=self.t("st_user")).grid(row=0, column=0, sticky="w", pady=3)
         user = tk.StringVar(value=self.cfg["opensubtitles_user"])
-        ttk.Entry(f, textvariable=user, width=32).grid(row=0, column=1, sticky="w", pady=3)
-        hb = tk.Label(f, text="?", font=("Segoe UI", 10, "bold"), fg="white", bg=TEAL, width=2, cursor="hand2")
-        hb.grid(row=0, column=2, padx=(6, 0))
-        hb.bind("<Button-1>", lambda e: webbrowser.open(OPENSUBTITLES_URL))
-        ttk.Label(f, text=self.t("st_pw")).grid(row=1, column=0, sticky="w", pady=3)
+        ttk.Entry(f2, textvariable=user, width=30).grid(row=0, column=1, sticky="w", pady=3, padx=(8, 0))
+        ttk.Label(f2, text=self.t("st_pw")).grid(row=1, column=0, sticky="w", pady=3)
         pw = tk.StringVar(value=config.decrypt(self.cfg["opensubtitles_password"]))
-        ttk.Entry(f, textvariable=pw, width=32, show="•").grid(row=1, column=1, sticky="w", pady=3)
-        help_lbl = tk.Label(f, text=self.t("st_help", limit=i18n.OPENSUBTITLES_LIMIT), justify="left",
-                            fg=TEAL_DARK, bg=TEAL_BG, cursor="hand2", font=("Segoe UI", 9))
-        help_lbl.grid(row=2, column=0, columnspan=3, sticky="w", pady=(2, 8))
-        help_lbl.bind("<Button-1>", lambda e: webbrowser.open(OPENSUBTITLES_URL))
-        ttk.Label(f, text=self.t("st_langs")).grid(row=3, column=0, sticky="w", pady=3)
+        ttk.Entry(f2, textvariable=pw, width=30, show="•").grid(row=1, column=1, sticky="w", pady=3, padx=(8, 0))
+        reg = tk.Label(f2, text="🔗 " + self.t("st_register"), fg="#bfffff", bg=FRAME,
+                       cursor="hand2", font=("Segoe UI", 9, "underline"))
+        reg.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 2))
+        reg.bind("<Button-1>", lambda e: webbrowser.open(OPENSUBTITLES_URL))
+        ttk.Label(f2, text=self.t("st_pw_note"), foreground=GREY, font=("Segoe UI", 8))\
+            .grid(row=3, column=0, columnspan=2, sticky="w")
+
+        # -- Untertitel-Sprachen
+        f3 = ttk.Labelframe(outer, text=self.t("sec_sub_langs"), padding=10)
+        f3.pack(fill="x", pady=(0, 10))
+        ttk.Label(f3, text=self.t("st_langs")).pack(anchor="w")
         known = tk.StringVar(value=", ".join(self.cfg["known_languages"]))
-        ttk.Entry(f, textvariable=known, width=32).grid(row=3, column=1, sticky="w", pady=3)
-        ttk.Label(f, text=self.t("st_pw_note"), foreground=GREY).grid(row=4, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ttk.Entry(f3, textvariable=known, width=42).pack(anchor="w", pady=(3, 0))
 
         def ok():
             from babelfish import Language
@@ -351,9 +369,11 @@ class App(_Root):
             self.cfg["opensubtitles_password"] = config.encrypt(pw.get())
             self.cfg["known_languages"] = codes or ["ru"]
             self.cfg["languages"] = [c for c in self.cfg["languages"] if c in self.cfg["known_languages"]]
+            self.cfg["ui_language"] = next((c for c, n in i18n.UI_LANGS.items() if n == ui_box.get()), "de")
             config.save(self.cfg)
-            self._build_lang_menu(); win.destroy()
-        b = ttk.Frame(f); b.grid(row=5, column=0, columnspan=3, pady=(12, 0))
+            win.destroy()
+            self._build()
+        b = ttk.Frame(outer); b.pack(pady=(2, 0))
         ttk.Button(b, text=self.t("st_save"), command=ok, style="Accent.TButton").pack(side="left", padx=4)
         ttk.Button(b, text=self.t("st_cancel"), command=win.destroy).pack(side="left", padx=4)
 
