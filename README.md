@@ -7,11 +7,13 @@ Unter der Haube: [subliminal](https://github.com/Diaoul/subliminal) (Download, P
 ## Benutzung
 
 1. `subsync.exe` starten (portabel, keine Installation).
-2. Ordner hineinziehen oder wählen, Sprachen ankreuzen, **Start**.
+2. Ordner hineinziehen oder wählen, Untertitel-Sprachen im Dropdown anhaken, **Start**.
 3. Fortschritt pro Episode im Fenster; am Ende ✔ mit Zusammenfassung. Videos, die schon Untertitel in der Sprache haben, werden übersprungen — mehrfaches Ausführen ist unkritisch.
-4. `subsync.exe <Ordner>` startet direkt mit diesem Ordner (dafür gibt es optional den Explorer-Kontextmenü-Eintrag, siehe Einstellungen).
+4. `subsync.exe <Ordner> [--lang ru,de]` startet direkt mit diesem Ordner.
 
-**Einstellungen:** OpenSubtitles.com-Login (Free-Account reicht, ~20 Downloads/Tag; Passwort per Windows DPAPI verschlüsselt in `%APPDATA%\subsync\config.json`), Sprachauswahl, Kontextmenü an/aus.
+Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar (Auswahl oben rechts).
+
+**Einstellungen:** OpenSubtitles.com-Login (Free-Account = 20 Downloads/Tag, „?" öffnet die Registrierung; Passwort per Windows DPAPI verschlüsselt in `%APPDATA%\subsync\config.json`), Liste der angebotenen Untertitel-Sprachen (ISO-Kürzel, werden validiert).
 
 **„Kein Untertitel gefunden":** Die Erkennung läuft über den kompletten Pfad (guessit) plus OpenSubtitles-Datei-Hash. Serien: Original-Serienname irgendwo im Pfad (Ordnername reicht, z. B. `Animal.Kingdom\S01\S01E09.Der große Coup.mp4`) + `SxxExx` im Dateinamen — die Sprache des Episodentitels ist egal. Filme: Originaltitel + Jahr in den Dateinamen. Es wird nicht geraten.
 
