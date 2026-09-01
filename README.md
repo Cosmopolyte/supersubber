@@ -13,7 +13,7 @@ Unter der Haube: [subliminal](https://github.com/Diaoul/subliminal) (Download, P
 
 **Einstellungen:** OpenSubtitles.com-Login (Free-Account reicht, ~20 Downloads/Tag; Passwort per Windows DPAPI verschlüsselt in `%APPDATA%\subsync\config.json`), Sprachauswahl, Kontextmenü an/aus.
 
-**„Kein Untertitel gefunden":** Die Erkennung braucht Serienname + `SxxExx` bzw. Filmtitel + Jahr im Dateinamen. Es wird nicht geraten.
+**„Kein Untertitel gefunden":** Die Erkennung läuft über den kompletten Pfad (guessit) plus OpenSubtitles-Datei-Hash. Serien: Original-Serienname irgendwo im Pfad (Ordnername reicht, z. B. `Animal.Kingdom\S01\S01E09.Der große Coup.mp4`) + `SxxExx` im Dateinamen — die Sprache des Episodentitels ist egal. Filme: Originaltitel + Jahr in den Dateinamen. Es wird nicht geraten.
 
 ## Entwicklung
 

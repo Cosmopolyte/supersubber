@@ -2,7 +2,9 @@
 Set-Location $PSScriptRoot
 # PyInstaller loggt auf stderr -> in PS 5.1 kein ErrorActionPreference=Stop, sondern Exit-Code prüfen
 & .\.venv\Scripts\pyinstaller.exe --noconfirm --clean --windowed --name subsync `
+    --icon "assets\icon.ico" `
     --add-data "bin;bin" `
+    --add-data "assets\icon.ico;assets" `
     --add-data "THIRD-PARTY.md;." `
     --collect-all subliminal --copy-metadata subliminal `
     --collect-all guessit --collect-all babelfish --copy-metadata babelfish `
