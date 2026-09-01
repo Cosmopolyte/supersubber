@@ -16,7 +16,17 @@ DEFAULTS = {
     "opensubtitles_user": "",
     "opensubtitles_password": "",        # DPAPI-verschlüsselt, base64
     "min_size_mb": 50,
+    "ui_language": "en",                 # Default Englisch; beim ersten Start Systemsprache erkannt
 }
+
+
+def _detect_ui_language() -> str:
+    """Windows-Anzeigesprache → de/ru wenn passend, sonst en."""
+    try:
+        lang_id = ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF
+        return {0x07: "de", 0x19: "ru"}.get(lang_id, "en")
+    except Exception:  # noqa: BLE001
+        return "en"
 
 
 class _DATA_BLOB(ctypes.Structure):
@@ -55,7 +65,7 @@ def load() -> dict:
         with open(CONFIG_FILE, encoding="utf-8") as f:
             cfg.update(json.load(f))
     except (OSError, ValueError):
-        pass
+        cfg["ui_language"] = _detect_ui_language()   # erster Start: Systemsprache übernehmen
     return cfg
 
 

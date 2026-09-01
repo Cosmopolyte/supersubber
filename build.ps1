@@ -4,7 +4,7 @@ Set-Location $PSScriptRoot
 & .\.venv\Scripts\pyinstaller.exe --noconfirm --clean --windowed --name subsync `
     --icon "assets\icon.ico" `
     --add-data "bin;bin" `
-    --add-data "assets\icon.ico;assets" `
+    --add-data "assets;assets" `
     --add-data "THIRD-PARTY.md;." `
     --collect-all subliminal --copy-metadata subliminal `
     --collect-all guessit --collect-all babelfish --copy-metadata babelfish `

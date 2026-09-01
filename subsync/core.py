@@ -40,6 +40,7 @@ class Result:
     synced: list[str] = field(default_factory=list)
     unsynced: list[str] = field(default_factory=list)   # geladen, alass gescheitert → roh übernommen
     missing: list[str] = field(default_factory=list)
+    missing_items: list[tuple[str, str]] = field(default_factory=list)   # (Videopfad, Sprachkürzel)
     noaccess: list[str] = field(default_factory=list)   # Ordner ohne Schreibrecht
     skipped: int = 0
     cancelled: bool = False
@@ -108,6 +109,86 @@ def _alass(video: Path, sub: Path, out: Path, log: Log) -> bool:
     return r.returncode == 0 and out.exists()
 
 
+def _region_setup():
+    from subliminal import region
+    if not region.is_configured:
+        region.configure("dogpile.cache.memory")
+
+
+def _providers(cfg: dict, log: Log, tr: Tr):
+    providers = list(BASE_PROVIDERS)
+    provider_configs = {}
+    from . import config as cfgmod
+    user, pw = cfg.get("opensubtitles_user", ""), cfgmod.decrypt(cfg.get("opensubtitles_password", ""))
+    if user and pw:
+        providers.append("opensubtitlescom")
+        provider_configs["opensubtitlescom"] = {"username": user, "password": pw}
+    else:
+        log(tr("c_no_login"))
+    return providers, provider_configs
+
+
+def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
+                   log: Log, tr: Tr, cancel: threading.Event, imdb_id: str | None = None):
+    from babelfish import Language
+    from subliminal import refine, save_subtitles, scan_video
+    from subliminal.video import Episode
+
+    got: dict[str, Path] = {}
+    try:
+        v = scan_video(str(video))
+        refine(v, refiners=("hash",))
+        if imdb_id:
+            if isinstance(v, Episode):
+                v.series_imdb_id = imdb_id
+            else:
+                v.imdb_id = imdb_id
+        want = {Language.fromietf(l) for l in langs}
+        found = pool.list_subtitles(v, want)
+        minutes = _duration_min(video)
+        ignore: list[str] = []
+        for _attempt in range(MAX_ATTEMPTS):
+            if not want:
+                break
+            best = pool.download_best_subtitles(found, v, want, subtitle_categories="n,hi,fo",
+                                                ignore_subtitles=ignore)
+            if not best:
+                break
+            for s in save_subtitles(v, best, directory=str(tmp)):
+                p = tmp / Path(s.get_path(v)).name
+                cues = _cue_count(p)
+                if minutes and cues / minutes < MIN_CUES_PER_MIN:
+                    log(tr("c_discard", lang=s.language.alpha2, cues=cues,
+                           mins=f"{minutes:.0f}", prov=s.provider_name))
+                    ignore.append(s.id)
+                    p.unlink(missing_ok=True)
+                    continue
+                got[s.language.alpha2] = p
+                want.discard(s.language)
+    except Exception as e:  # noqa: BLE001
+        log(tr("c_dl_err", err=f"{type(e).__name__}: {e}"))
+
+    for lang in langs:
+        if cancel.is_set():
+            break
+        dl = got.get(lang)
+        if not dl or not dl.exists():
+            if imdb_id:
+                log(tr("c_imdb_none", name=video.name, lang=lang))
+            else:
+                log(tr("c_not_found", lang=lang))
+            res.missing.append(f"{video.name}  [{lang}]")
+            res.missing_items.append((str(video), lang))
+            continue
+        out = video.with_name(f"{video.stem}.{lang}{dl.suffix.lower()}")
+        if _alass(video, dl, out, log):
+            res.synced.append(f"{video.name}  [{lang}]")
+        else:
+            shutil.copyfile(dl, out)
+            res.unsynced.append(f"{video.name}  [{lang}]")
+            log(tr("c_sync_fail"))
+
+
 def run(folder: str, languages: list[str], cfg: dict, progress: Progress, log: Log,
         cancel: threading.Event, tr: Tr = _tr_fallback) -> Result:
     res = Result()
@@ -119,12 +200,9 @@ def run(folder: str, languages: list[str], cfg: dict, progress: Progress, log: L
 
 
 def _run(folder, languages, cfg, progress, log, cancel, tr, res: Result) -> Result:
-    from babelfish import Language
-    from subliminal import ProviderPool, refine, region, save_subtitles, scan_video
+    from subliminal import ProviderPool
 
-    if not region.is_configured:
-        region.configure("dogpile.cache.memory")
-
+    _region_setup()
     progress(tr("c_scan"), 0, 0)
     videos = find_videos(folder, int(cfg.get("min_size_mb", 50)))
     if not videos:
@@ -148,16 +226,7 @@ def _run(folder, languages, cfg, progress, log, cancel, tr, res: Result) -> Resu
     if not todo:
         return res
 
-    providers = list(BASE_PROVIDERS)
-    provider_configs = {}
-    from . import config as cfgmod
-    user, pw = cfg.get("opensubtitles_user", ""), cfgmod.decrypt(cfg.get("opensubtitles_password", ""))
-    if user and pw:
-        providers.append("opensubtitlescom")
-        provider_configs["opensubtitlescom"] = {"username": user, "password": pw}
-    else:
-        log(tr("c_no_login"))
-
+    providers, provider_configs = _providers(cfg, log, tr)
     tmp = Path(tempfile.mkdtemp(prefix="subsync-"))
     try:
         with ProviderPool(providers=providers, provider_configs=provider_configs) as pool:
@@ -167,50 +236,33 @@ def _run(folder, languages, cfg, progress, log, cancel, tr, res: Result) -> Resu
                     break
                 progress(f"{video.name}", i, len(todo))
                 log(f"[{i}/{len(todo)}] {video.name}  [{', '.join(langs)}]")
-                got = {}
-                try:
-                    v = scan_video(str(video))
-                    refine(v, refiners=("hash",))
-                    want = {Language.fromietf(l) for l in langs}
-                    found = pool.list_subtitles(v, want)
-                    minutes = _duration_min(video)
-                    ignore: list[str] = []
-                    for _attempt in range(MAX_ATTEMPTS):
-                        if not want:
-                            break
-                        best = pool.download_best_subtitles(found, v, want, subtitle_categories="n,hi,fo",
-                                                            ignore_subtitles=ignore)
-                        if not best:
-                            break
-                        for s in save_subtitles(v, best, directory=str(tmp)):
-                            p = tmp / Path(s.get_path(v)).name
-                            cues = _cue_count(p)
-                            if minutes and cues / minutes < MIN_CUES_PER_MIN:
-                                log(tr("c_discard", lang=s.language.alpha2, cues=cues,
-                                       mins=f"{minutes:.0f}", prov=s.provider_name))
-                                ignore.append(s.id)
-                                p.unlink(missing_ok=True)
-                                continue
-                            got[s.language.alpha2] = p
-                            want.discard(s.language)
-                except Exception as e:  # noqa: BLE001
-                    log(tr("c_dl_err", err=f"{type(e).__name__}: {e}"))
-                for lang in langs:
-                    if cancel.is_set():
-                        break
-                    dl = got.get(lang)
-                    if not dl or not dl.exists():
-                        res.missing.append(f"{video.name}  [{lang}]")
-                        log(tr("c_not_found", lang=lang))
-                        continue
-                    out = video.with_name(f"{video.stem}.{lang}{dl.suffix.lower()}")
-                    progress(f"{video.name}", i, len(todo))
-                    if _alass(video, dl, out, log):
-                        res.synced.append(f"{video.name}  [{lang}]")
-                    else:
-                        shutil.copyfile(dl, out)
-                        res.unsynced.append(f"{video.name}  [{lang}]")
-                        log(tr("c_sync_fail"))
+                _process_video(pool, video, langs, tmp, res, log, tr, cancel)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+    return res
+
+
+def run_imdb(entries: list[tuple[str, list[str], str]], cfg: dict, progress: Progress, log: Log,
+             cancel: threading.Event, tr: Tr = _tr_fallback) -> Result:
+    """Nachsuche per IMDb-ID: entries = [(Videopfad, Sprachen, tt-ID), …]."""
+    res = Result()
+    try:
+        from subliminal import ProviderPool
+        _region_setup()
+        providers, provider_configs = _providers(cfg, log, tr)
+        tmp = Path(tempfile.mkdtemp(prefix="subsync-"))
+        try:
+            with ProviderPool(providers=providers, provider_configs=provider_configs) as pool:
+                for i, (path, langs, ttid) in enumerate(entries, 1):
+                    if cancel.is_set():
+                        res.cancelled = True
+                        break
+                    video = Path(path)
+                    progress(f"{video.name}", i, len(entries))
+                    log(tr("c_imdb_via", id=ttid, name=video.name))
+                    _process_video(pool, video, langs, tmp, res, log, tr, cancel, imdb_id=ttid)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    except Exception as e:  # noqa: BLE001
+        res.error = f"{type(e).__name__}: {e}"
     return res
