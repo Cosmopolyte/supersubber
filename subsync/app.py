@@ -187,6 +187,8 @@ class App(_Root):
         self.lang_sel: dict[str, tk.BooleanVar] = {}
         self.lang_btn = ttk.Menubutton(row, direction="below")
         self.lang_btn.pack(side="left")
+        ttk.Button(row, text=self.t("btn_langs"), style="Square.TButton",
+                   command=self.lang_picker).pack(side="left", padx=(6, 0))
         self._build_lang_menu()
         self.start_btn = ttk.Button(row, text=self.t("start"), command=self.start, width=12, style="Accent.TButton")
         self.start_btn.pack(side="right")
@@ -255,19 +257,95 @@ class App(_Root):
 
     def _build_lang_menu(self):
         menu = tk.Menu(self.lang_btn, tearoff=0)
-        prev = {c: v.get() for c, v in self.lang_sel.items()}
         self.lang_sel = {}
         for code in self.cfg["known_languages"]:
-            var = tk.BooleanVar(value=prev.get(code, code in self.cfg["languages"]))
+            var = tk.BooleanVar(value=code in self.cfg["languages"])
             self.lang_sel[code] = var
-            menu.add_checkbutton(label=i18n.lang_name(self.ui, code), variable=var,
-                                 command=self._update_lang_btn)
+            menu.add_checkbutton(label=i18n.lang_name(code), variable=var,
+                                 command=self._on_lang_toggle)
         self.lang_btn.configure(menu=menu)
         self._update_lang_btn()
 
+    def _on_lang_toggle(self):
+        # Auswahl sofort merken — nicht erst bei Start (sonst geht sie beim Schließen verloren)
+        self.cfg["languages"] = [c for c, v in self.lang_sel.items() if v.get()]
+        config.save(self.cfg)
+        self._update_lang_btn()
+
     def _update_lang_btn(self):
-        sel = [i18n.lang_name(self.ui, c) for c, v in self.lang_sel.items() if v.get()]
+        sel = [i18n.lang_name(c) for c, v in self.lang_sel.items() if v.get()]
         self.lang_btn.configure(text=", ".join(sel) if sel else "—")
+
+    def lang_picker(self):
+        """Scrollbare Checkbox-Liste aller Sprachen mit Filterfeld; angehakt = im Dropdown angeboten."""
+        win = tk.Toplevel(self); win.title(self.t("pick_langs_title")); win.grab_set()
+        win.configure(bg=BG); win.geometry("380x540"); win.resizable(False, True)
+        try:
+            win.iconbitmap(str(asset("icon.ico")))
+        except tk.TclError:
+            pass
+        outer = ttk.Frame(win, padding=12, style="Bg.TFrame"); outer.pack(fill="both", expand=True)
+        card = tk.Frame(outer, bg=CARD); card.pack(fill="both", expand=True)
+        ttk.Label(card, text=self.t("pick_hint"), wraplength=330).pack(anchor="w", padx=10, pady=(10, 6))
+
+        frow = ttk.Frame(card); frow.pack(fill="x", padx=10, pady=(0, 6))
+        tk.Label(frow, text="🔍", bg=CARD, fg=LIGHT).pack(side="left", padx=(0, 6))
+        filter_var = tk.StringVar()
+        ttk.Entry(frow, textvariable=filter_var).pack(side="left", fill="x", expand=True)
+
+        lf = ttk.Frame(card); lf.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        canvas = tk.Canvas(lf, bg="white", highlightthickness=1, highlightbackground=CARD_EDGE)
+        sb = ttk.Scrollbar(lf, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y"); canvas.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(canvas, bg="white")
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        win.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(-1 * (e.delta // 120), "units"))
+
+        # große Liste + evtl. manuell konfigurierte Codes außerhalb davon
+        entries = dict(i18n.LANGS)
+        for code in self.cfg["known_languages"]:
+            entries.setdefault(code, (code, code))
+        vars_ = {c: tk.BooleanVar(value=c in self.cfg["known_languages"]) for c in entries}
+
+        def refill(*_):
+            for w in inner.winfo_children():
+                w.destroy()
+            q = filter_var.get().strip().casefold()
+            for code, (native, english) in entries.items():
+                if q and q not in native.casefold() and q not in english.casefold() and q not in code.casefold():
+                    continue
+                label = native if native.casefold() == english.casefold() else f"{native}   ({english})"
+                tk.Checkbutton(inner, text=label, variable=vars_[code], bg="white", fg=INK,
+                               activebackground="white", activeforeground=INK, anchor="w",
+                               font=("Segoe UI", 10), padx=8).pack(fill="x")
+            canvas.yview_moveto(0)
+
+        filter_var.trace_add("write", refill)
+        refill()
+
+        def close():
+            win.unbind_all("<MouseWheel>")
+            win.destroy()
+
+        def ok():
+            checked = [c for c in entries if vars_[c].get()]
+            if not checked:
+                messagebox.showwarning("subsync", self.t("warn_lang"), parent=win)
+                return
+            added = [c for c in checked if c not in self.cfg["known_languages"]]
+            self.cfg["known_languages"] = checked
+            # neu hinzugefügte Sprachen gleich anhaken — dafür wurden sie ja geholt
+            self.cfg["languages"] = [c for c in self.cfg["languages"] if c in checked] + added
+            config.save(self.cfg)
+            close()
+            self._build_lang_menu()
+
+        b = ttk.Frame(outer, style="Bg.TFrame"); b.pack(pady=(10, 0))
+        ttk.Button(b, text=self.t("st_save"), command=ok, style="Accent.TButton").pack(side="left", padx=4)
+        ttk.Button(b, text=self.t("st_cancel"), command=close).pack(side="left", padx=4)
+        win.protocol("WM_DELETE_WINDOW", close)
 
     # ---- Aktionen -----------------------------------------------------------
     def browse(self):
@@ -303,8 +381,10 @@ class App(_Root):
                 if not video:
                     return
                 video = video.replace("/", "\\")
-        m = re.search(r"\.([a-z]{2})\.(?:srt|ass|ssa)$", os.path.basename(sub), re.IGNORECASE)
-        lang = m.group(1).lower() if m else next((c for c, v in self.lang_sel.items() if v.get()), None)
+        m = re.search(r"\.([a-z]{2}(?:-[a-z]{2})?)\.(?:srt|ass|ssa)$", os.path.basename(sub), re.IGNORECASE)
+        # Regionalcodes normalisieren: pt-br → pt-BR
+        lang = (m.group(1)[:2].lower() + m.group(1)[2:].upper()) if m \
+            else next((c for c, v in self.lang_sel.items() if v.get()), None)
         if not lang:
             messagebox.showwarning("subsync", self.t("warn_lang")); return
         self.folder_var.set(os.path.dirname(video))
@@ -537,28 +617,9 @@ class App(_Root):
         ttk.Label(g, text=self.t("st_pw_note"), foreground=GREY,
                   font=("Segoe UI", 8)).grid(row=3, column=0, columnspan=2, sticky="w")
 
-        # -- Untertitel-Sprachen
-        f3 = card(self.t("sec_sub_langs"))
-        ttk.Label(f3, text=self.t("st_langs")).pack(anchor="w", padx=10)
-        known = tk.StringVar(value=", ".join(self.cfg["known_languages"]))
-        ttk.Entry(f3, textvariable=known, width=42).pack(anchor="w", padx=10, pady=(3, 10))
-
         def ok():
-            from babelfish import Language
-            codes = [x.strip().lower() for x in known.get().split(",") if x.strip()]
-            bad = []
-            for c in codes:
-                try:
-                    Language.fromietf(c)
-                except Exception:  # noqa: BLE001
-                    bad.append(c)
-            if bad:
-                messagebox.showwarning("subsync", self.t("st_invalid", codes=", ".join(bad)), parent=win)
-                return
             self.cfg["opensubtitles_user"] = user.get().strip()
             self.cfg["opensubtitles_password"] = config.encrypt(pw.get())
-            self.cfg["known_languages"] = codes or ["ru"]
-            self.cfg["languages"] = [c for c in self.cfg["languages"] if c in self.cfg["known_languages"]]
             self.cfg["ui_language"] = next((c for c, n in i18n.UI_LANGS.items() if n == ui_box.get()), "en")
             config.save(self.cfg)
             win.destroy()
@@ -590,7 +651,8 @@ def main():
     langs = None
     if "--lang" in args:
         i = args.index("--lang")
-        langs = [x.strip().lower() for x in args[i + 1].split(",") if x.strip()] if i + 1 < len(args) else None
+        langs = [x.strip()[:2].lower() + x.strip()[2:].upper() for x in args[i + 1].split(",") if x.strip()] \
+            if i + 1 < len(args) else None
         del args[i:i + 2]
     folder = args[0] if args else None
     App(folder, langs).mainloop()

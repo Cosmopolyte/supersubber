@@ -17,7 +17,9 @@ Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar (⚙ → App-
 
 **IMDb-Nachsuche:** Wird ein Video nicht erkannt, erscheint nach dem Lauf der Button „Specify IMDb ID…" — dort IMDb-ID oder -Link (z. B. `tt0069697` oder die IMDb-URL) eintragen und erneut suchen lassen. Bei Serien die IMDb-ID der Serie angeben. Findet auch das nichts, gibt es für dieses Video keine herunterladbaren Untertitel in der Sprache.
 
-**Einstellungen:** OpenSubtitles.com-Login (Free-Account = 20 Downloads/Tag, „?" öffnet die Registrierung; Passwort per Windows DPAPI verschlüsselt in `%APPDATA%\subsync\config.json`), Liste der angebotenen Untertitel-Sprachen (ISO-Kürzel, werden validiert).
+**Sprachen:** Das Dropdown bietet zunächst die zehn häufigsten Untertitel-Sprachen an (beim ersten Start ist die Windows-Anzeigesprache vorausgewählt, die Auswahl bleibt gespeichert). Über den Button „Sprachen…" daneben lässt sich das Angebot aus ~40 Sprachen zusammenstellen — Checkbox-Liste mit Suchfeld, Anzeige in der jeweiligen Eigenschreibweise.
+
+**Einstellungen:** OpenSubtitles.com-Login (Free-Account = 20 Downloads/Tag, „?" öffnet die Registrierung; Passwort per Windows DPAPI verschlüsselt in `%APPDATA%\subsync\config.json`).
 
 **„Kein Untertitel gefunden":** Die Erkennung läuft über den kompletten Pfad (guessit) plus OpenSubtitles-Datei-Hash. Serien: Original-Serienname irgendwo im Pfad (Ordnername reicht, z. B. `Animal.Kingdom\S01\S01E09.Der große Coup.mp4`) + `SxxExx` im Dateinamen — die Sprache des Episodentitels ist egal. Filme: Originaltitel + Jahr in den Dateinamen. Es wird nicht geraten.
 

@@ -11,13 +11,17 @@ CONFIG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), AP
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 
 DEFAULTS = {
-    "languages": ["ru"],                 # vorausgewählte Sprachen
-    "known_languages": ["ru", "de", "en"],  # Auswahl in der GUI
+    "languages": ["en"],                 # vorausgewählte Sprachen; erster Start: Systemsprache
+    "known_languages": ["en", "fr", "es", "de", "pt", "ru", "uk", "zh", "ko", "ja"],  # Dropdown-Angebot
     "opensubtitles_user": "",
     "opensubtitles_password": "",        # DPAPI-verschlüsselt, base64
     "min_size_mb": 50,
     "ui_language": "en",                 # Default Englisch; beim ersten Start Systemsprache erkannt
 }
+
+# Windows-Primary-LANGID → ISO-Kürzel, nur für die Default-known_languages relevant
+_LANGID = {0x09: "en", 0x0c: "fr", 0x0a: "es", 0x07: "de", 0x16: "pt",
+           0x19: "ru", 0x22: "uk", 0x04: "zh", 0x12: "ko", 0x11: "ja"}
 
 
 def _detect_ui_language() -> str:
@@ -25,6 +29,15 @@ def _detect_ui_language() -> str:
     try:
         lang_id = ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF
         return {0x07: "de", 0x19: "ru"}.get(lang_id, "en")
+    except Exception:  # noqa: BLE001
+        return "en"
+
+
+def _detect_sub_language() -> str:
+    """Windows-Anzeigesprache → vorausgewählte Untertitel-Sprache (nur erster Start)."""
+    try:
+        lang_id = ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF
+        return _LANGID.get(lang_id, "en")
     except Exception:  # noqa: BLE001
         return "en"
 
@@ -66,6 +79,7 @@ def load() -> dict:
             cfg.update(json.load(f))
     except (OSError, ValueError):
         cfg["ui_language"] = _detect_ui_language()   # erster Start: Systemsprache übernehmen
+        cfg["languages"] = [_detect_sub_language()]
     return cfg
 
 
