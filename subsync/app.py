@@ -191,16 +191,14 @@ class App(_Root):
         self.start_btn = ttk.Button(row, text=self.t("start"), command=self.start, width=12, style="Accent.TButton")
         self.start_btn.pack(side="right")
 
-        # IMDb-Zeile — erscheint nur, wenn der Ordner genau EIN Video enthält (Einzelfilm-Fall)
+        # IMDb-Zeile — optional; Einzelfilm: Film-ID, Serienordner: Serien-ID (gilt für alle Episoden)
         self.imdb_row = ttk.Frame(card1)
+        self.imdb_row.pack(fill="x", padx=10, pady=(0, 12), after=self._subrow)
         ttk.Label(self.imdb_row, text=self.t("imdb_label"), width=11).pack(side="left")
         self.imdb_var = tk.StringVar()
         ttk.Entry(self.imdb_row, textvariable=self.imdb_var, width=24).pack(side="left")
         ttk.Label(self.imdb_row, text=self.t("imdb_opt_hint"), foreground=GREY,
                   font=("Segoe UI", 9)).pack(side="left", padx=8)
-        self._chk_job = None
-        self.folder_var.trace_add("write", lambda *a: self._folder_changed())
-        self._update_imdb_row()
 
         # ---- Karte 2: Balken, Statuszeile, Ergebnis, Log (ohne Titel)
         sec = tk.Frame(self, bg=CARD)
@@ -232,26 +230,6 @@ class App(_Root):
         self.log.tag_configure("warn", foreground="#7a5c00")
         sb.pack(side="right", fill="y")
         self.log.pack(side="left", fill="both", expand=True)
-
-    def _folder_changed(self):
-        if self._chk_job:
-            self.after_cancel(self._chk_job)
-        self._chk_job = self.after(400, self._update_imdb_row)
-
-    def _update_imdb_row(self):
-        self._chk_job = None
-        folder = self.folder_var.get().strip().strip('"')
-        single = False
-        if os.path.isdir(folder):
-            try:
-                single = core.count_videos(folder, int(self.cfg.get("min_size_mb", 50))) == 1
-            except OSError:
-                pass
-        if single:
-            self.imdb_row.pack(fill="x", padx=10, pady=(0, 12), after=self._subrow)
-        else:
-            self.imdb_row.pack_forget()
-            self.imdb_var.set("")
 
     def _set_result(self, text: str, fg: str):
         if text:
@@ -322,7 +300,7 @@ class App(_Root):
             messagebox.showwarning("subsync", self.t("warn_lang")); return
         imdb_id = None
         raw = self.imdb_var.get().strip()
-        if raw and self.imdb_row.winfo_ismapped():
+        if raw:
             m = IMDB_RE.search(raw)
             if not m:
                 messagebox.showwarning("subsync", self.t("c_imdb_invalid", val=raw)); return

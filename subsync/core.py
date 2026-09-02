@@ -164,6 +164,55 @@ def _region_setup():
     from subliminal import region
     if not region.is_configured:
         region.configure("dogpile.cache.memory")
+    _patch_opensubtitlescom()
+
+
+def _patch_opensubtitlescom():
+    """subliminal 2.7 schickt die Serien-IMDb-ID nicht an die API (TODO im Provider).
+    Patch: series_imdb_id wird als show_imdb_id durchgereicht und als präzises Kriterium
+    parent_imdb_id + Staffel + Episode VOR die anderen Suchkriterien gestellt."""
+    from subliminal.providers import opensubtitlescom as osc
+
+    if getattr(osc.OpenSubtitlesComProvider, "_subsync_patched", False):
+        return
+    from subliminal.video import Episode, Movie
+
+    def list_subtitles(self, video, languages):
+        query = season = episode = show_imdb_id = None
+        if isinstance(video, Episode):
+            query, season, episode = video.series, video.season, video.episode
+            show_imdb_id = video.series_imdb_id
+        elif isinstance(video, Movie):
+            query = video.title
+        return self.query(
+            languages,
+            moviehash=video.hashes.get('opensubtitles'),
+            imdb_id=video.imdb_id,
+            show_imdb_id=show_imdb_id,
+            query=query,
+            season=season,
+            episode=episode,
+            allow_machine_translated=False,
+            sort_by_download_count=True,
+        )
+
+    orig_make = osc.OpenSubtitlesComProvider._make_query
+
+    def _make_query(self, *, show_imdb_id=None, season=None, episode=None, **kw):
+        try:
+            criteria = orig_make(self, show_imdb_id=show_imdb_id, season=season, episode=episode, **kw)
+        except ValueError:
+            criteria = []
+        if show_imdb_id and season is not None and episode is not None:
+            criteria.insert(0, {'parent_imdb_id': osc.sanitize_id(show_imdb_id),
+                                'season_number': season, 'episode_number': episode})
+        if not criteria:
+            raise ValueError('Not enough information')
+        return criteria
+
+    osc.OpenSubtitlesComProvider.list_subtitles = list_subtitles
+    osc.OpenSubtitlesComProvider._make_query = _make_query
+    osc.OpenSubtitlesComProvider._subsync_patched = True
 
 
 def _providers(cfg: dict, log: Log, tr: Tr):
