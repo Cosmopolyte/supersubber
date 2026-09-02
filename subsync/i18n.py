@@ -19,7 +19,7 @@ SUB_LANG_NAMES = {
 STRINGS = {
     "de": {
         "folder": "Ordner:",
-        "drop_main": "Ordner mit Filmen oder Serien\nhierher ziehen",
+        "drop_main": "Ordner, Film oder Untertitel\nhierher ziehen",
         "subtitles": "Untertitel:",
         "start": "Start",
         "cancel_run": "Abbrechen",
@@ -46,6 +46,8 @@ STRINGS = {
         "imdb_search": "Suchen",
         "imdb_label": "IMDb:",
         "imdb_opt_hint": "(optional — ID oder Link; bei Serien die Serien-ID)",
+        "pick_video": "Video zu diesem Untertitel wählen",
+        "c_backup": "    Original gesichert als {name}",
         "st_title": "Einstellungen",
         "sec_app_lang": "App-Sprache",
         "sec_account": "OpenSubtitles.com-Account",
@@ -80,7 +82,7 @@ STRINGS = {
     },
     "ru": {
         "folder": "Папка:",
-        "drop_main": "Перетащите сюда папку\nс фильмами или сериалом",
+        "drop_main": "Перетащите сюда папку,\nфильм или субтитры",
         "subtitles": "Субтитры:",
         "start": "Старт",
         "cancel_run": "Отмена",
@@ -107,6 +109,8 @@ STRINGS = {
         "imdb_search": "Искать",
         "imdb_label": "IMDb:",
         "imdb_opt_hint": "(необязательно — ID или ссылка; для сериала ID сериала)",
+        "pick_video": "Выберите видео для этих субтитров",
+        "c_backup": "    оригинал сохранён как {name}",
         "st_title": "Настройки",
         "sec_app_lang": "Язык приложения",
         "sec_account": "Аккаунт OpenSubtitles.com",
@@ -140,7 +144,7 @@ STRINGS = {
     },
     "en": {
         "folder": "Folder:",
-        "drop_main": "Drag a folder with movies\nor a series here",
+        "drop_main": "Drag a folder, movie\nor subtitle here",
         "subtitles": "Subtitles:",
         "start": "Start",
         "cancel_run": "Cancel",
@@ -167,6 +171,8 @@ STRINGS = {
         "imdb_search": "Search",
         "imdb_label": "IMDb:",
         "imdb_opt_hint": "(optional — ID or link; for a series use the series ID)",
+        "pick_video": "Choose the video for this subtitle",
+        "c_backup": "    original kept as {name}",
         "st_title": "Settings",
         "sec_app_lang": "App language",
         "sec_account": "OpenSubtitles.com account",

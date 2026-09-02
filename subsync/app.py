@@ -276,10 +276,53 @@ class App(_Root):
             self.folder_var.set(d.replace("/", "\\"))
 
     def on_drop(self, event):
-        paths = self.tk.splitlist(event.data)
+        paths = list(self.tk.splitlist(event.data))
+        subs = [p for p in paths if os.path.splitext(p)[1].lower() in core.SUB_EXT]
+        vids = [p for p in paths if os.path.splitext(p)[1].lower() in core.VIDEO_EXT]
+        if subs:
+            # Untertitel-File → lokalen Sync starten (Video ggf. automatisch/per Dialog)
+            self._local_sync(subs[0], vids[0] if vids else None)
+            return
         if paths:
             p = paths[0]
             self.folder_var.set(p if os.path.isdir(p) else os.path.dirname(p))
+
+    def _local_sync(self, sub: str, video: str | None):
+        if self.worker and self.worker.is_alive():
+            return
+        if not video:
+            folder = os.path.dirname(sub)
+            vids = [v for v in core.find_videos(folder, int(self.cfg.get("min_size_mb", 50)))
+                    if str(v.parent) == folder]
+            if len(vids) == 1:
+                video = str(vids[0])
+            else:
+                exts = " ".join(f"*{e}" for e in sorted(core.VIDEO_EXT))
+                video = filedialog.askopenfilename(title=self.t("pick_video"),
+                                                   filetypes=[("Video", exts)], initialdir=folder)
+                if not video:
+                    return
+                video = video.replace("/", "\\")
+        m = re.search(r"\.([a-z]{2})\.(?:srt|ass|ssa)$", os.path.basename(sub), re.IGNORECASE)
+        lang = m.group(1).lower() if m else next((c for c, v in self.lang_sel.items() if v.get()), None)
+        if not lang:
+            messagebox.showwarning("subsync", self.t("warn_lang")); return
+        self.folder_var.set(os.path.dirname(video))
+        self.cancel.clear()
+        self._log_clear()
+        ui = self.ui
+
+        def work():
+            res = core.run_local(video, sub, lang, self.cfg,
+                                 progress=lambda m2, i, n: self.q.put(("progress", m2, i, n)),
+                                 log=lambda s: self.q.put(("log", s)), cancel=self.cancel,
+                                 tr=lambda key, **kw: i18n.tr(ui, key, **kw),
+                                 frac=lambda v: self.q.put(("frac", v)))
+            self.q.put(("done", res))
+
+        self.worker = threading.Thread(target=work, daemon=True)
+        self._busy(True)
+        self.worker.start()
 
     def _busy(self, on: bool):
         self.start_btn.config(text=self.t("cancel_run") if on else self.t("start"))

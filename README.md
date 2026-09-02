@@ -13,6 +13,8 @@ Unter der Haube: [subliminal](https://github.com/Diaoul/subliminal) (Download, P
 
 Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar (⚙ → App-Sprache). Beim ersten Start wird die Windows-Anzeigesprache übernommen, sonst Englisch.
 
+**Eigenes Untertitel-File syncen:** Ein `.srt`/`.ass` in die Drop-Zone ziehen (allein oder zusammen mit dem Video) — liegt genau ein Video im selben Ordner, wird es automatisch genommen, sonst fragt ein Dateidialog. Ergebnis wie immer `<Video>.<lang>.srt` (Sprache aus dem Dateinamen-Tag oder der Auswahl); ein dort liegendes File wird einmalig als `*.orig` gesichert (Kodi ignoriert diese Endung).
+
 **IMDb-Nachsuche:** Wird ein Video nicht erkannt, erscheint nach dem Lauf der Button „Specify IMDb ID…" — dort IMDb-ID oder -Link (z. B. `tt0069697` oder die IMDb-URL) eintragen und erneut suchen lassen. Bei Serien die IMDb-ID der Serie angeben. Findet auch das nichts, gibt es für dieses Video keine herunterladbaren Untertitel in der Sprache.
 
 **Einstellungen:** OpenSubtitles.com-Login (Free-Account = 20 Downloads/Tag, „?" öffnet die Registrierung; Passwort per Windows DPAPI verschlüsselt in `%APPDATA%\subsync\config.json`), Liste der angebotenen Untertitel-Sprachen (ISO-Kürzel, werden validiert).

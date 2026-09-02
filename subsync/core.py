@@ -360,6 +360,61 @@ def _run(folder, languages, cfg, progress, log, cancel, tr, frac, imdb_id, res: 
     return res
 
 
+def run_local(video_path: str, sub_path: str, lang: str, cfg: dict, progress: Progress, log: Log,
+              cancel: threading.Event, tr: Tr = _tr_fallback, frac: Frac | None = None) -> Result:
+    """Vorhandenes Untertitel-File gegen ein Video syncen (kein Download).
+    Ziel ist immer <Video>.<lang>.<ext>; ein dort liegendes File wird einmalig als *.orig gesichert."""
+    res = Result()
+    try:
+        video, sub = Path(video_path), Path(sub_path)
+        if not can_write(video.parent):
+            res.noaccess.append(str(video.parent))
+            log(tr("c_no_write", folder=video.parent.name or str(video.parent)))
+            return res
+        target = video.with_name(f"{video.stem}.{lang}{sub.suffix.lower()}")
+        src = sub
+        tmpdir: Path | None = None
+        try:
+            if os.path.normcase(str(src)) == os.path.normcase(str(target)):
+                orig = Path(str(target) + ".orig")
+                if orig.exists():
+                    import time
+                    orig = Path(str(target) + f".orig-{time.strftime('%Y%m%d-%H%M%S')}")
+                src.rename(orig)
+                log(tr("c_backup", name=orig.name))
+                # alass erkennt das Format an der Endung → temporäre Kopie mit echter Endung
+                tmpdir = Path(tempfile.mkdtemp(prefix="subsync-"))
+                src = tmpdir / sub.name
+                shutil.copyfile(orig, src)
+            elif target.exists():
+                orig = Path(str(target) + ".orig")
+                if not orig.exists():
+                    target.rename(orig)
+                    log(tr("c_backup", name=orig.name))
+            progress(video.name, 1, 1)
+            log(f"[1/1] {video.name}  [{lang}]  ←  {sub.name}")
+            log(tr("c_syncing"))
+            sp = (lambda f: frac(min(1.0, 0.03 + 0.97 * f))) if frac else None
+            ok, suspect = _alass(video, src, target, log, tr, subprog=sp)
+            if ok and suspect:
+                res.suspect.append(f"{video.name}  [{lang}]")
+                res.suspect_items.append((str(video), lang))
+            elif ok:
+                res.synced.append(f"{video.name}  [{lang}]")
+            else:
+                shutil.copyfile(src, target)
+                res.unsynced.append(f"{video.name}  [{lang}]")
+                log(tr("c_sync_fail"))
+            if frac:
+                frac(1.0)
+        finally:
+            if tmpdir:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+    except Exception as e:  # noqa: BLE001
+        res.error = f"{type(e).__name__}: {e}"
+    return res
+
+
 def run_imdb(entries: list[tuple[str, list[str], str]], cfg: dict, progress: Progress, log: Log,
              cancel: threading.Event, tr: Tr = _tr_fallback, frac: Frac | None = None) -> Result:
     """Nachsuche per IMDb-ID: entries = [(Videopfad, Sprachen, tt-ID), …]."""
