@@ -1,4 +1,4 @@
-"""Konfiguration in %APPDATA%\\subsync\\config.json. Passwort per Windows DPAPI verschlüsselt (nur dieser User/Rechner)."""
+"""Konfiguration in %APPDATA%\\supersubber\\config.json. Passwort per Windows DPAPI verschlüsselt (nur dieser User/Rechner)."""
 import base64
 import ctypes
 import ctypes.wintypes as wt
@@ -6,9 +6,10 @@ import json
 import os
 import sys
 
-APP_NAME = "subsync"
+APP_NAME = "supersubber"
 CONFIG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), APP_NAME)
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
+_OLD_CONFIG = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "subsync", "config.json")
 
 DEFAULTS = {
     "languages": ["en"],                 # vorausgewählte Sprachen; erster Start: Systemsprache
@@ -74,6 +75,14 @@ def decrypt(blob: str) -> str:
 
 def load() -> dict:
     cfg = dict(DEFAULTS)
+    if not os.path.exists(CONFIG_FILE) and os.path.exists(_OLD_CONFIG):
+        # Migration von der Vorgänger-Version (App hieß früher subsync)
+        try:
+            os.makedirs(CONFIG_DIR, exist_ok=True)
+            import shutil
+            shutil.copyfile(_OLD_CONFIG, CONFIG_FILE)
+        except OSError:
+            pass
     try:
         with open(CONFIG_FILE, encoding="utf-8") as f:
             cfg.update(json.load(f))

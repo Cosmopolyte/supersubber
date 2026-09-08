@@ -1,14 +1,14 @@
-# Drittkomponenten
+# Third-party components
 
-subsync ruft alass und ffmpeg als separate Prozesse auf (keine Verlinkung); subliminal wird als Python-Bibliothek eingebunden.
+supersubber invokes alass and ffmpeg as separate processes (no linking); subliminal is used as a Python library.
 
-| Komponente | Version | Lizenz | Quelle |
+| Component | Version | License | Source |
 |---|---|---|---|
 | alass (alass-cli) | 2.0.0 | GPL-3.0 | https://github.com/kaegi/alass |
-| ffmpeg / ffprobe (aus alass-windows64.zip) | 4.x (Build aus dem alass-Release) | GPL-2.0+ (Build mit GPL-Komponenten) | https://ffmpeg.org — Lizenztext in `bin/LICENSE-ffmpeg.txt` |
+| ffmpeg / ffprobe (from alass-windows64.zip) | 4.x (build shipped with the alass release) | GPL-2.0+ (build includes GPL components) | https://ffmpeg.org — license text in `bin/LICENSE-ffmpeg.txt` |
 | subliminal | 2.7.1 | MIT | https://github.com/Diaoul/subliminal |
-| guessit, babelfish | (Abhängigkeiten von subliminal) | LGPL-3.0 / BSD-3 | |
+| guessit, babelfish | (subliminal dependencies) | LGPL-3.0 / BSD-3 | |
 | tkinterdnd2 | 0.6.x | MIT | https://github.com/pmgagne/tkinterdnd2 |
-| PyInstaller (nur Build) | 6.x | GPL-2.0 mit Bootloader-Ausnahme | https://pyinstaller.org |
+| PyInstaller (build only) | 6.x | GPL-2.0 with bootloader exception | https://pyinstaller.org |
 
-Bei Weitergabe des Pakets: Lizenztexte in `bin/` mitliefern; der Quellcode der GPL-Binaries ist über die genannten Upstream-Repos in der jeweiligen Version verfügbar.
+The release zip redistributes the alass and ffmpeg binaries unchanged, together with their license texts in `bin/`. Source code for the GPL binaries is available from the upstream repositories listed above in the exact versions used; `fetch-bins.ps1` documents how the binaries are obtained.

@@ -1,35 +1,49 @@
-# subsync — Find & Sync Subtitles
+# supersubber — Find & Sync Subtitles
 
-Portable Windows-Tool: lädt fehlende Untertitel für alle Videos in einem Ordner (rekursiv) und synchronisiert sie gegen die Tonspur — behebt Framerate-Drift (23,976 ↔ 25 fps), Offsets und Werbeschnitt-Sprünge. Ergebnis liegt als `<Video>.<lang>.srt` neben dem Video, Kodi & Co. laden es automatisch.
+Portable Windows tool: downloads missing subtitles for every video in a folder (recursively) and synchronizes them against the audio track — fixing framerate drift (23.976 ↔ 25 fps), constant offsets and ad-break jumps. The result is saved as `<video>.<lang>.srt` next to the video, where Kodi, VLC and friends pick it up automatically.
 
-Unter der Haube: [subliminal](https://github.com/Diaoul/subliminal) (Download, Provider: Podnapisi, OpenSubtitles.com mit Login, u. a.) + [alass](https://github.com/kaegi/alass) (Sync per Sprachaktivitäts-Analyse). Siehe `THIRD-PARTY.md`.
+Under the hood: [subliminal](https://github.com/Diaoul/subliminal) (search & download from multiple providers) + [alass](https://github.com/kaegi/alass) (sync via voice-activity analysis). See `THIRD-PARTY.md`.
 
-## Benutzung
+*Deutsche Anleitung: [README.de.md](README.de.md)*
 
-1. `subsync.exe` starten (portabel, keine Installation).
-2. Ordner hineinziehen oder wählen, Untertitel-Sprachen im Dropdown anhaken, **Start**.
-3. Fortschritt pro Episode im Fenster; am Ende ✔ mit Zusammenfassung. Videos, die schon Untertitel in der Sprache haben, werden übersprungen — mehrfaches Ausführen ist unkritisch.
-4. `subsync.exe <Ordner> [--lang ru,de]` startet direkt mit diesem Ordner.
+## Usage
 
-Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar (⚙ → App-Sprache). Beim ersten Start wird die Windows-Anzeigesprache übernommen, sonst Englisch.
+1. Download the latest release zip, unpack it anywhere, run `supersubber.exe` — portable, no installation.
+2. Drag a folder into the window (or pick one), tick the subtitle languages you want, hit **Start**.
+3. Watch the per-episode progress; a summary appears at the end. Videos that already have subtitles in a language are skipped, so re-running is always safe.
+4. `supersubber.exe <folder> [--lang ru,de]` starts processing that folder right away.
 
-**Eigenes Untertitel-File syncen:** Ein `.srt`/`.ass` in die Drop-Zone ziehen (allein oder zusammen mit dem Video) — liegt genau ein Video im selben Ordner, wird es automatisch genommen, sonst fragt ein Dateidialog. Ergebnis wie immer `<Video>.<lang>.srt` (Sprache aus dem Dateinamen-Tag oder der Auswahl); ein dort liegendes File wird einmalig als `*.orig` gesichert (Kodi ignoriert diese Endung).
+The UI speaks English, German and Russian (⚙ → app language; the Windows display language is picked on first start). The subtitle-language dropdown starts with the ten most common languages — the **Languages…** button opens a searchable list of ~40 more, shown in their native names.
 
-**IMDb-Nachsuche:** Wird ein Video nicht erkannt, erscheint nach dem Lauf der Button „Specify IMDb ID…" — dort IMDb-ID oder -Link (z. B. `tt0069697` oder die IMDb-URL) eintragen und erneut suchen lassen. Bei Serien die IMDb-ID der Serie angeben. Findet auch das nichts, gibt es für dieses Video keine herunterladbaren Untertitel in der Sprache.
+**Sync your own subtitle file:** drag a `.srt`/`.ass` into the drop zone (alone, or together with the video). If exactly one video sits in the same folder it is picked automatically, otherwise a file dialog asks. The displaced file is kept once as `*.orig` (an extension media players ignore).
 
-**Sprachen:** Das Dropdown bietet zunächst die zehn häufigsten Untertitel-Sprachen an (beim ersten Start ist die Windows-Anzeigesprache vorausgewählt, die Auswahl bleibt gespeichert). Über den Button „Sprachen…" daneben lässt sich das Angebot aus ~40 Sprachen zusammenstellen — Checkbox-Liste mit Suchfeld, Anzeige in der jeweiligen Eigenschreibweise.
+**IMDb lookup:** if a video isn't recognized, a "Specify IMDb ID…" button appears after the run — paste the IMDb ID or link (for series: the ID of the show) and search again.
 
-**Einstellungen:** OpenSubtitles.com-Login (Free-Account = 20 Downloads/Tag, „?" öffnet die Registrierung; Passwort per Windows DPAPI verschlüsselt in `%APPDATA%\subsync\config.json`).
+**"No subtitles found":** detection uses the full path (guessit) plus the OpenSubtitles file hash. Series need the original show title somewhere in the path (the folder name is enough, e.g. `The.Expanse\S02\S02E05.Home.mp4`) and `SxxExx` in the filename — the episode title's language doesn't matter. Movies need original title + year in the filename. supersubber never guesses.
 
-**„Kein Untertitel gefunden":** Die Erkennung läuft über den kompletten Pfad (guessit) plus OpenSubtitles-Datei-Hash. Serien: Original-Serienname irgendwo im Pfad (Ordnername reicht, z. B. `Animal.Kingdom\S01\S01E09.Der große Coup.mp4`) + `SxxExx` im Dateinamen — die Sprache des Episodentitels ist egal. Filme: Originaltitel + Jahr in den Dateinamen. Es wird nicht geraten.
+## Settings
 
-## Entwicklung
+Optional OpenSubtitles.com login (a free account adds 20 downloads/day on top of the free providers; the password is stored encrypted with Windows DPAPI in `%APPDATA%\supersubber\config.json`).
+
+## Notes
+
+- **Windows only.** Uses DPAPI and ships Windows binaries; there are no plans for other platforms right now.
+- **SmartScreen warning:** the executable is not code-signed (this is a free hobby tool). Windows may warn on first start — "More info" → "Run anyway", or build from source below.
+- **Provided as-is.** No support promises; issues and PRs are welcome but may take a while.
+
+## Building from source
 
 ```powershell
 python -m venv .venv; .\.venv\Scripts\pip install -r requirements.txt
-.\fetch-bins.ps1          # alass + ffmpeg nach bin\
-.\.venv\Scripts\python -m subsync [Ordner]
-.\build.ps1               # dist\subsync\ + dist\subsync-<ver>-win64.zip
+.\fetch-bins.ps1          # downloads alass + ffmpeg into bin\
+.\.venv\Scripts\python -m supersubber [folder]
+.\build.ps1               # dist\supersubber\ + dist\supersubber-<version>-win64.zip
 ```
 
-Projektstruktur: `subsync/core.py` (Ablauf), `subsync/app.py` (GUI), `subsync/config.py`, `subsync/contextmenu.py`. Vorgänger: `legacy/subsync.ps1` (PowerShell-Wrapper um die CLI-Tools).
+Project layout: `supersubber/core.py` (pipeline), `supersubber/app.py` (Tkinter GUI), `supersubber/config.py`, `supersubber/i18n.py`.
+
+Note: `subliminal` is pinned to an exact version because supersubber patches the OpenSubtitles.com provider to pass the series IMDb ID for episode searches (an upstream TODO). Bump the pin only after checking that patch in `core.py`.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Bundled third-party binaries keep their own licenses, see [THIRD-PARTY.md](THIRD-PARTY.md).

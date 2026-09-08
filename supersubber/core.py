@@ -86,7 +86,7 @@ def has_sub(video: Path, lang: str) -> bool:
 
 
 def can_write(directory: Path) -> bool:
-    probe = directory / f".subsync-{uuid.uuid4().hex[:8]}.tmp"
+    probe = directory / f".supersubber-{uuid.uuid4().hex[:8]}.tmp"
     try:
         probe.touch()
         probe.unlink()
@@ -173,7 +173,7 @@ def _patch_opensubtitlescom():
     parent_imdb_id + Staffel + Episode VOR die anderen Suchkriterien gestellt."""
     from subliminal.providers import opensubtitlescom as osc
 
-    if getattr(osc.OpenSubtitlesComProvider, "_subsync_patched", False):
+    if getattr(osc.OpenSubtitlesComProvider, "_supersubber_patched", False):
         return
     from subliminal.video import Episode, Movie
 
@@ -212,7 +212,7 @@ def _patch_opensubtitlescom():
 
     osc.OpenSubtitlesComProvider.list_subtitles = list_subtitles
     osc.OpenSubtitlesComProvider._make_query = _make_query
-    osc.OpenSubtitlesComProvider._subsync_patched = True
+    osc.OpenSubtitlesComProvider._supersubber_patched = True
 
 
 def _providers(cfg: dict, log: Log, tr: Tr):
@@ -342,7 +342,7 @@ def _run(folder, languages, cfg, progress, log, cancel, tr, frac, imdb_id, res: 
         return res
 
     providers, provider_configs = _providers(cfg, log, tr)
-    tmp = Path(tempfile.mkdtemp(prefix="subsync-"))
+    tmp = Path(tempfile.mkdtemp(prefix="supersubber-"))
     try:
         with ProviderPool(providers=providers, provider_configs=provider_configs) as pool:
             total = len(todo)
@@ -383,7 +383,7 @@ def run_local(video_path: str, sub_path: str, lang: str, cfg: dict, progress: Pr
                 src.rename(orig)
                 log(tr("c_backup", name=orig.name))
                 # alass erkennt das Format an der Endung → temporäre Kopie mit echter Endung
-                tmpdir = Path(tempfile.mkdtemp(prefix="subsync-"))
+                tmpdir = Path(tempfile.mkdtemp(prefix="supersubber-"))
                 src = tmpdir / sub.name
                 shutil.copyfile(orig, src)
             elif target.exists():
@@ -423,7 +423,7 @@ def run_imdb(entries: list[tuple[str, list[str], str]], cfg: dict, progress: Pro
         from subliminal import ProviderPool
         _region_setup()
         providers, provider_configs = _providers(cfg, log, tr)
-        tmp = Path(tempfile.mkdtemp(prefix="subsync-"))
+        tmp = Path(tempfile.mkdtemp(prefix="supersubber-"))
         try:
             with ProviderPool(providers=providers, provider_configs=provider_configs) as pool:
                 total = len(entries)

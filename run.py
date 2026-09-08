@@ -1,5 +1,5 @@
 """PyInstaller-Einstiegspunkt."""
-from subsync.app import main
+from supersubber.app import main
 
 if __name__ == "__main__":
     main()

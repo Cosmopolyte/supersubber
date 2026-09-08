@@ -1,7 +1,7 @@
-# Baut das portable Paket nach dist\subsync\ (PyInstaller onedir). Voraussetzung: .venv mit requirements + bin\ (fetch-bins.ps1).
+# Baut das portable Paket nach dist\supersubber\ (PyInstaller onedir). Voraussetzung: .venv mit requirements + bin\ (fetch-bins.ps1).
 Set-Location $PSScriptRoot
 # PyInstaller loggt auf stderr -> in PS 5.1 kein ErrorActionPreference=Stop, sondern Exit-Code prüfen
-& .\.venv\Scripts\pyinstaller.exe --noconfirm --clean --windowed --name subsync `
+& .\.venv\Scripts\pyinstaller.exe --noconfirm --clean --windowed --name supersubber `
     --icon "assets\icon.ico" `
     --add-data "bin;bin" `
     --add-data "assets;assets" `
@@ -12,8 +12,8 @@ Set-Location $PSScriptRoot
     --hidden-import dogpile.cache.backends.memory `
     run.py 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -match 'ERROR|WARNING: Hidden import|not found|Traceback' }
 if ($LASTEXITCODE -ne 0) { Write-Host "PyInstaller fehlgeschlagen (Exit $LASTEXITCODE)"; exit 1 }
-$ver =(Get-Content subsync\__init__.py | Select-String '__version__ = "(.*)"').Matches[0].Groups[1].Value
-$zip = "dist\subsync-$ver-win64.zip"
+$ver =(Get-Content supersubber\__init__.py | Select-String '__version__ = "(.*)"').Matches[0].Groups[1].Value
+$zip = "dist\supersubber-$ver-win64.zip"
 if (Test-Path $zip) { Remove-Item $zip }
-Compress-Archive -Path "dist\subsync" -DestinationPath $zip
+Compress-Archive -Path "dist\supersubber" -DestinationPath $zip
 Write-Host "Fertig: $zip  ($([math]::Round((Get-Item $zip).Length/1MB,1)) MB)"

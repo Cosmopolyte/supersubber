@@ -152,7 +152,7 @@ class App(_Root):
     def _build(self):
         for w in self.winfo_children():
             w.destroy()
-        self.title("subsync — Find & Sync Subtitles")
+        self.title("supersubber — Find & Sync Subtitles")
 
         # Zahnrad in eigener Zeile ganz oben rechts (auf dem Hintergrund)
         gearrow = ttk.Frame(self, style="Bg.TFrame"); gearrow.pack(fill="x", padx=10, pady=(8, 6))
@@ -332,7 +332,7 @@ class App(_Root):
         def ok():
             checked = [c for c in entries if vars_[c].get()]
             if not checked:
-                messagebox.showwarning("subsync", self.t("warn_lang"), parent=win)
+                messagebox.showwarning("supersubber", self.t("warn_lang"), parent=win)
                 return
             added = [c for c in checked if c not in self.cfg["known_languages"]]
             self.cfg["known_languages"] = checked
@@ -386,7 +386,7 @@ class App(_Root):
         lang = (m.group(1)[:2].lower() + m.group(1)[2:].upper()) if m \
             else next((c for c, v in self.lang_sel.items() if v.get()), None)
         if not lang:
-            messagebox.showwarning("subsync", self.t("warn_lang")); return
+            messagebox.showwarning("supersubber", self.t("warn_lang")); return
         self.folder_var.set(os.path.dirname(video))
         self.cancel.clear()
         self._log_clear()
@@ -418,15 +418,15 @@ class App(_Root):
         folder = self.folder_var.get().strip().strip('"')
         langs = [c for c, v in self.lang_sel.items() if v.get()]
         if not os.path.isdir(folder):
-            messagebox.showwarning("subsync", self.t("warn_folder")); return
+            messagebox.showwarning("supersubber", self.t("warn_folder")); return
         if not langs:
-            messagebox.showwarning("subsync", self.t("warn_lang")); return
+            messagebox.showwarning("supersubber", self.t("warn_lang")); return
         imdb_id = None
         raw = self.imdb_var.get().strip()
         if raw:
             m = IMDB_RE.search(raw)
             if not m:
-                messagebox.showwarning("subsync", self.t("c_imdb_invalid", val=raw)); return
+                messagebox.showwarning("supersubber", self.t("c_imdb_invalid", val=raw)); return
             imdb_id = m.group(0)
         self.cfg["languages"] = langs; config.save(self.cfg)
         self.cancel.clear()
@@ -548,7 +548,7 @@ class App(_Root):
                     continue
                 jobs.append((path, langs, m.group(0)))
             if bad:
-                messagebox.showwarning("subsync", self.t("c_imdb_invalid", val=", ".join(bad)), parent=win)
+                messagebox.showwarning("supersubber", self.t("c_imdb_invalid", val=", ".join(bad)), parent=win)
                 return
             win.destroy()
             if not jobs:
@@ -646,7 +646,7 @@ class App(_Root):
 
 
 def main():
-    """subsync.exe [Ordner] [--lang ru,de]  — mit Ordner wird sofort gestartet."""
+    """supersubber.exe [Ordner] [--lang ru,de]  — mit Ordner wird sofort gestartet."""
     args = sys.argv[1:]
     langs = None
     if "--lang" in args:
