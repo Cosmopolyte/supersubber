@@ -228,6 +228,25 @@ def _providers(cfg: dict, log: Log, tr: Tr):
     return providers, provider_configs
 
 
+def _ensure_utf8(path: Path) -> bool:
+    """alass liest nur UTF-8 — fremdkodierte Subs (cp1252, cp1251 …) in-place transkodieren.
+    Liefert True, wenn die Datei umgeschrieben wurde."""
+    raw = path.read_bytes()
+    try:
+        raw.decode("utf-8-sig")
+        return False
+    except UnicodeDecodeError:
+        pass
+    try:
+        from charset_normalizer import from_bytes
+        best = from_bytes(raw).best()
+        text = str(best) if best else raw.decode("cp1252", errors="replace")
+    except ImportError:
+        text = raw.decode("cp1252", errors="replace")
+    path.write_text(text, encoding="utf-8")
+    return True
+
+
 def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
                    log: Log, tr: Tr, cancel: threading.Event, imdb_id: str | None = None,
                    subprog: Callable[[float], None] | None = None):
@@ -270,6 +289,7 @@ def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
                     continue
                 rel = getattr(s, "release", None) or getattr(s, "info", None) or s.id
                 log(tr("c_got", lang=s.language.alpha2, rel=rel, prov=s.provider_name))
+                _ensure_utf8(p)
                 got[s.language.alpha2] = p
                 want.discard(s.language)
         sp(0.35)
@@ -372,25 +392,28 @@ def run_local(video_path: str, sub_path: str, lang: str, cfg: dict, progress: Pr
             log(tr("c_no_write", folder=video.parent.name or str(video.parent)))
             return res
         target = video.with_name(f"{video.stem}.{lang}{sub.suffix.lower()}")
-        src = sub
         tmpdir: Path | None = None
         try:
-            if os.path.normcase(str(src)) == os.path.normcase(str(target)):
+            source = sub
+            if os.path.normcase(str(sub)) == os.path.normcase(str(target)):
                 orig = Path(str(target) + ".orig")
                 if orig.exists():
                     import time
                     orig = Path(str(target) + f".orig-{time.strftime('%Y%m%d-%H%M%S')}")
-                src.rename(orig)
+                sub.rename(orig)
                 log(tr("c_backup", name=orig.name))
-                # alass erkennt das Format an der Endung → temporäre Kopie mit echter Endung
-                tmpdir = Path(tempfile.mkdtemp(prefix="supersubber-"))
-                src = tmpdir / sub.name
-                shutil.copyfile(orig, src)
+                source = orig
             elif target.exists():
                 orig = Path(str(target) + ".orig")
                 if not orig.exists():
                     target.rename(orig)
                     log(tr("c_backup", name=orig.name))
+            # alass erkennt das Format an der Endung und liest nur UTF-8 → immer über eine
+            # temporäre Kopie mit echter Endung gehen, nötigenfalls transkodiert (Original bleibt unberührt)
+            tmpdir = Path(tempfile.mkdtemp(prefix="supersubber-"))
+            src = tmpdir / sub.name
+            shutil.copyfile(source, src)
+            _ensure_utf8(src)
             progress(video.name, 1, 1)
             log(f"[1/1] {video.name}  [{lang}]  ←  {sub.name}")
             log(tr("c_syncing"))

@@ -4,6 +4,8 @@ Portables Windows-Tool: lädt fehlende Untertitel für alle Videos in einem Ordn
 
 Unter der Haube: [subliminal](https://github.com/Diaoul/subliminal) (Download von mehreren Providern) + [alass](https://github.com/kaegi/alass) (Sync per Sprachaktivitäts-Analyse). Siehe `THIRD-PARTY.md`.
 
+<p align="center"><img src="assets/screenshot-main.png" alt="Hauptfenster nach einem Lauf" width="560"></p>
+
 ## Benutzung
 
 1. Release-Zip herunterladen, irgendwohin entpacken, `supersubber.exe` starten — portabel, keine Installation.

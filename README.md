@@ -6,6 +6,8 @@ Under the hood: [subliminal](https://github.com/Diaoul/subliminal) (search & dow
 
 *Deutsche Anleitung: [README.de.md](README.de.md)*
 
+<p align="center"><img src="assets/screenshot-main.png" alt="Main window after a finished run" width="560"></p>
+
 ## Usage
 
 1. Download the latest release zip, unpack it anywhere, run `supersubber.exe` — portable, no installation.
@@ -24,6 +26,8 @@ The UI speaks English, German and Russian (⚙ → app language; the Windows dis
 ## Settings
 
 Optional OpenSubtitles.com login (a free account adds 20 downloads/day on top of the free providers; the password is stored encrypted with Windows DPAPI in `%APPDATA%\supersubber\config.json`).
+
+<p align="center"><img src="assets/screenshot-settings.png" alt="Settings dialog" width="380"></p>
 
 ## Notes
 
