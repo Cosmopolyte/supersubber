@@ -50,17 +50,29 @@ class Result:
     error: str | None = None
 
 
+_SAMPLE_RE = re.compile(r"(^|[.\-_ ])sample([.\-_ ]|$)", re.IGNORECASE)
+
+
+def _is_video(p: Path, min_size_mb: int) -> bool:
+    """Videodatei ab Mindestgröße; Release-Samples („…-sample.mkv", „Sample\…") werden übersprungen —
+    die wären bei 2160p groß genug, bekämen aber die Subs der ganzen Folge."""
+    if p.suffix.lower() not in VIDEO_EXT:
+        return False
+    if _SAMPLE_RE.search(p.stem) or p.parent.name.lower() == "sample":
+        return False
+    try:
+        return p.stat().st_size >= min_size_mb * 1024 * 1024
+    except OSError:
+        return False
+
+
 def find_videos(folder: str, min_size_mb: int) -> list[Path]:
     out = []
     for root, _, files in os.walk(folder):
         for f in files:
             p = Path(root) / f
-            if p.suffix.lower() in VIDEO_EXT:
-                try:
-                    if p.stat().st_size >= min_size_mb * 1024 * 1024:
-                        out.append(p)
-                except OSError:
-                    pass
+            if _is_video(p, min_size_mb):
+                out.append(p)
     return sorted(out)
 
 
@@ -69,15 +81,10 @@ def count_videos(folder: str, min_size_mb: int, limit: int = 2) -> int:
     n = 0
     for root, _, files in os.walk(folder):
         for f in files:
-            p = Path(root) / f
-            if p.suffix.lower() in VIDEO_EXT:
-                try:
-                    if p.stat().st_size >= min_size_mb * 1024 * 1024:
-                        n += 1
-                        if n >= limit:
-                            return n
-                except OSError:
-                    pass
+            if _is_video(Path(root) / f, min_size_mb):
+                n += 1
+                if n >= limit:
+                    return n
     return n
 
 
