@@ -19,6 +19,8 @@ The UI speaks English, German and Russian (⚙ → app language; the Windows dis
 
 **Sync your own subtitle file:** drag a `.srt`/`.ass` into the drop zone (alone, or together with the video). If exactly one video sits in the same folder it is picked automatically, otherwise a file dialog asks. The displaced file is kept once as `*.orig` (an extension media players ignore).
 
+**NFO files:** if a `.nfo` next to the video contains an IMDb link (release NFOs almost always do, Kodi/Jellyfin `movie.nfo`/`tvshow.nfo` too), supersubber searches by that ID right away — original title, year or wording in the filename no longer matter.
+
 **IMDb lookup:** if a video isn't recognized, a "Specify IMDb ID…" button appears after the run — paste the IMDb ID or link (for series: the ID of the show) and search again.
 
 **"No subtitles found":** detection uses the full path (guessit) plus the OpenSubtitles file hash. Series need the original show title somewhere in the path (the folder name is enough, e.g. `The.Expanse\S02\S02E05.Home.mp4`) and `SxxExx` in the filename — the episode title's language doesn't matter. Movies need original title + year in the filename. supersubber never guesses.

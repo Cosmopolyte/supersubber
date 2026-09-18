@@ -228,6 +228,30 @@ def _providers(cfg: dict, log: Log, tr: Tr):
     return providers, provider_configs
 
 
+_IMDB_RE = re.compile(r"tt\d{7,10}")
+
+
+def _imdb_from_nfo(video: Path, episode: bool) -> str | None:
+    """IMDb-ID aus NFO-Dateien neben dem Video (Release-NFOs enthalten fast immer den IMDb-Link,
+    Kodi-NFOs die ID strukturiert). Filme: NFO mit gleichem Stamm bevorzugt, sonst jede NFO im Ordner.
+    Serien: nur tvshow.nfo (Ordner oder Elternordner) — Episoden-NFOs tragen die Episoden-ID, nicht die Serie."""
+    if episode:
+        cands = [video.parent / "tvshow.nfo", video.parent.parent / "tvshow.nfo"]
+    else:
+        same = video.with_suffix(".nfo")
+        cands = [same] + sorted(p for p in video.parent.glob("*.nfo") if p != same)
+    for nfo in cands:
+        try:
+            if not nfo.is_file() or nfo.stat().st_size > 512_000:
+                continue
+            m = _IMDB_RE.search(nfo.read_text(encoding="utf-8", errors="replace"))
+            if m:
+                return m.group(0)
+        except OSError:
+            continue
+    return None
+
+
 def _ensure_utf8(path: Path) -> bool:
     """alass liest nur UTF-8 — fremdkodierte Subs (cp1252, cp1251 …) in-place transkodieren.
     Liefert True, wenn die Datei umgeschrieben wurde."""
@@ -262,6 +286,10 @@ def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
         v = scan_video(str(video))
         refine(v, refiners=("hash",))
         sp(0.1)
+        if not imdb_id:
+            imdb_id = _imdb_from_nfo(video, isinstance(v, Episode))
+            if imdb_id:
+                log(tr("c_imdb_nfo", id=imdb_id))
         if imdb_id:
             # imdb_id geht in die Provider-Query; bei Episoden zusätzlich als Serien-ID fürs Matching
             v.imdb_id = imdb_id

@@ -17,6 +17,8 @@ Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar (⚙ → App-
 
 **Eigenes Untertitel-File syncen:** Ein `.srt`/`.ass` in die Drop-Zone ziehen (allein oder zusammen mit dem Video) — liegt genau ein Video im selben Ordner, wird es automatisch genommen, sonst fragt ein Dateidialog. Ein verdrängtes File wird einmalig als `*.orig` gesichert (diese Endung ignorieren Player).
 
+**NFO-Dateien:** Liegt neben dem Video eine `.nfo` mit IMDb-Link (Release-NFOs haben ihn fast immer, Kodi/Jellyfin-`movie.nfo`/`tvshow.nfo` ebenso), sucht supersubber sofort über diese ID — Originaltitel, Jahr oder Schreibweise im Dateinamen spielen dann keine Rolle mehr.
+
 **IMDb-Nachsuche:** Wird ein Video nicht erkannt, erscheint nach dem Lauf der Button „IMDb-ID angeben…" — IMDb-ID oder -Link eintragen (bei Serien die ID der Serie) und erneut suchen lassen.
 
 **„Kein Untertitel gefunden":** Die Erkennung läuft über den kompletten Pfad (guessit) plus OpenSubtitles-Datei-Hash. Serien: Original-Serientitel irgendwo im Pfad (Ordnername reicht, z. B. `The.Expanse\S02\S02E05.Home.mp4`) + `SxxExx` im Dateinamen — die Sprache des Episodentitels ist egal. Filme: Originaltitel + Jahr im Dateinamen. Es wird nicht geraten.
