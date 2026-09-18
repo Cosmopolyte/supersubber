@@ -252,6 +252,7 @@ def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
                    subprog: Callable[[float], None] | None = None):
     from babelfish import Language
     from subliminal import refine, save_subtitles, scan_video
+    from subliminal.score import episode_scores, movie_scores
     from subliminal.video import Episode
 
     sp = subprog or (lambda f: None)
@@ -269,13 +270,20 @@ def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
         want = {Language.fromietf(l) for l in langs}
         found = pool.list_subtitles(v, want)
         sp(0.25)
+        # Mindest-Score: Serien müssen Serie+Staffel+Episode treffen, Filme Titel+Jahr (ohne Jahr im
+        # Namen nur Titel). Hash- und IMDb-Treffer liegen darüber. Ohne Schwelle gewinnt sonst jeder
+        # Titel-Teilstring („Whistle" → „Fried Green Tomatoes at the Whistle Stop Café").
+        if isinstance(v, Episode):
+            min_score = episode_scores["series"] + episode_scores["season"] + episode_scores["episode"]
+        else:
+            min_score = movie_scores["title"] + (movie_scores["year"] if getattr(v, "year", None) else 0)
         minutes = _duration_min(video)
         ignore: list[str] = []
         for _attempt in range(MAX_ATTEMPTS):
             if not want:
                 break
-            best = pool.download_best_subtitles(found, v, want, subtitle_categories="n,hi,fo",
-                                                ignore_subtitles=ignore)
+            best = pool.download_best_subtitles(found, v, want, min_score=min_score,
+                                                subtitle_categories="n,hi,fo", ignore_subtitles=ignore)
             if not best:
                 break
             for s in save_subtitles(v, best, directory=str(tmp)):
