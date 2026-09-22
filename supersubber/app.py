@@ -155,6 +155,7 @@ class App(_Root):
                     focuscolor="#f2f2f2", padding=(10, 2))
         s.map("TButton", background=[("active", "white"), ("pressed", "#d8d8d8")])
         s.configure("Square.TButton", padding=(6, 1))
+        s.configure("Cell.TButton", padding=(5, 0), font=("Segoe UI", 8, "bold"))
         s.configure("Gear.TButton", padding=(5, 4))
         s.configure("Accent.TButton", background=TEAL, foreground="white", bordercolor=TEAL_DARK,
                     font=("Segoe UI", 10, "bold"), padding=(10, 2))
@@ -197,10 +198,11 @@ class App(_Root):
         top = ttk.Frame(card1); top.pack(fill="x", padx=10, pady=(10, 2))
         ttk.Label(top, text=self.t("folder"), width=LABEL_W).pack(side="left")
         self.folder_var = tk.StringVar(value=getattr(self, "folder_var", None) and self.folder_var.get() or self._pending_folder)
+        # Wählen-Knopf VOR dem Pfadfeld — das Feld darf beliebig breit werden, der Knopf bleibt sichtbar
+        ttk.Button(top, text="…", width=4, style="Square.TButton", command=self.browse).pack(side="left", fill="y", padx=(0, 6))
         fe = ttk.Entry(top, textvariable=self.folder_var)
-        fe.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        fe.pack(side="left", fill="x", expand=True)
         fe.bind("<Return>", lambda e: self._trigger_scan())
-        ttk.Button(top, text="…", width=3, style="Square.TButton", command=self.browse).pack(side="left", fill="y")
 
         self.drop = tk.Canvas(card1, height=130, bg=CARD, highlightthickness=0, cursor="hand2")
         self.drop.pack(fill="x", padx=10, pady=(6, 12))
@@ -235,10 +237,13 @@ class App(_Root):
         self.table.bind("<Motion>", self._on_table_motion)
         self.table.bind("<Leave>", self._tip_hide)
         tsb = ttk.Scrollbar(tf, orient="vertical", command=self.table.yview)
-        self.table.configure(yscrollcommand=tsb.set)
+        # Overlay-Buttons in der IMDb-Spalte müssen bei Scroll und Größenänderung mitwandern
+        self.table.configure(yscrollcommand=lambda *a: (tsb.set(*a), self._place_imdb_buttons()))
+        self.table.bind("<Configure>", lambda e: self.after_idle(self._place_imdb_buttons))
         tsb.pack(side="right", fill="y")
         self.table.pack(side="left", fill="x", expand=True)
         self._row_items: dict[str, core.Item] = {}
+        self._imdb_btns: dict[str, tuple] = {}
         self._table_langs = []
         self._setup_columns([c for c, v in self.lang_sel.items() if v.get()])
         foot = ttk.Frame(tcard); foot.pack(fill="x", padx=10, pady=(0, 10))
@@ -465,14 +470,14 @@ class App(_Root):
             self.table.heading(f"l_{l}", text=i18n.lang_name_ui(self.ui, l), anchor="w")
             self.table.column(f"l_{l}", width=115, minwidth=70, stretch=False, anchor="w")
         self.table.heading("imdb", text=self.t("col_imdb"), anchor="w")
-        self.table.column("imdb", width=100, minwidth=70, stretch=False, anchor="w")
+        self.table.column("imdb", width=175, minwidth=120, stretch=False, anchor="w")
 
     def _row_values(self, it: core.Item) -> tuple[list, str]:
         vals = [it.video.name, it.recognized or ("—" if it.langs else "")]
         for l in self._table_langs:
             st = it.status.get(l)
             vals.append("…" if st == "pending" else (f"{self._SYM.get(st, '')} {self.t('s_' + st)}" if st else ""))
-        vals.append(it.imdb_id or (self.t("imdb_set") if it.langs else ""))
+        vals.append(it.imdb_id or "")            # Buttons liegen als Overlay über dieser Zelle
         if not it.langs:
             tag = "present"
         elif not any(it.status.get(l) in ("found", "synced", "suspect", "unsynced") for l in it.langs):
@@ -490,6 +495,7 @@ class App(_Root):
             vals, tag = self._row_values(it)
             iid = self.table.insert("", "end", values=vals, tags=(tag, "odd" if i % 2 else "even"))
             self._row_items[iid] = it
+        self.after_idle(self._place_imdb_buttons)
 
     def _refresh_rows(self, items: list):
         for iid, it in self._row_items.items():
@@ -497,14 +503,46 @@ class App(_Root):
                 vals, tag = self._row_values(it)
                 zebra = [t for t in self.table.item(iid, "tags") if t in ("odd", "even")]
                 self.table.item(iid, values=vals, tags=(tag, *zebra))
+        self.after_idle(self._place_imdb_buttons)
+
+    def _place_imdb_buttons(self):
+        """Echte Buttons in der IMDb-Spalte: SET wenn leer, EDIT + ✕ wenn eine ID steht. Als Overlay über
+        den sichtbaren Zellen platziert; nicht sichtbare Zeilen bekommen keinen Button."""
+        if not self.table.winfo_exists():
+            return
+        for iid, (b1, b2) in list(self._imdb_btns.items()):
+            if iid not in self._row_items:
+                b1.destroy(); b2.destroy(); del self._imdb_btns[iid]
+        busy = bool(self.worker and self.worker.is_alive())
+        for iid, it in self._row_items.items():
+            bbox = self.table.bbox(iid, "imdb") if it.langs else None
+            if iid not in self._imdb_btns:
+                b1 = ttk.Button(self.table, style="Cell.TButton", command=lambda it=it: self._imdb_popup(it))
+                b2 = ttk.Button(self.table, text="✕", style="Cell.TButton", width=2,
+                                command=lambda it=it: self._clear_imdb(it))
+                self._imdb_btns[iid] = (b1, b2)
+            b1, b2 = self._imdb_btns[iid]
+            if not bbox:
+                b1.place_forget(); b2.place_forget(); continue
+            x, y, w, h = bbox
+            state = ["disabled"] if busy else ["!disabled"]
+            b1.state(state); b2.state(state)
+            if it.imdb_id:
+                b1.configure(text=self.t("btn_edit"), width=5)
+                b2.place(x=x + w - 26, y=y + 1, height=h - 2)
+                b1.place(x=x + w - 26 - 48, y=y + 1, height=h - 2)
+            else:
+                b1.configure(text=self.t("btn_set"), width=5)
+                b2.place_forget()
+                b1.place(x=x + 3, y=y + 1, height=h - 2)
+
+    def _clear_imdb(self, it: core.Item):
+        if self.worker and self.worker.is_alive():
+            return
+        self._rescan([it], None)
 
     def _on_table_click(self, event):
-        if self.table.identify("region", event.x, event.y) != "cell":
-            return
-        col = self.table.column(self.table.identify_column(event.x), "id")
-        it = self._row_items.get(self.table.identify_row(event.y))
-        if col == "imdb" and it and it.langs and not (self.worker and self.worker.is_alive()):
-            self._imdb_popup(it)
+        return
 
     def _on_table_motion(self, event):
         """Abgeschnittene Zellinhalte als Tooltip zeigen."""
@@ -512,8 +550,6 @@ class App(_Root):
         iid, colid = self.table.identify_row(event.y), self.table.identify_column(event.x)
         in_cell = bool(iid and colid) and self.table.identify("region", event.x, event.y) == "cell"
         colname = self.table.column(colid, "id") if colid else ""
-        # IMDb-Zelle ist klickbar → Handzeiger
-        self.table.configure(cursor="hand2" if in_cell and colname == "imdb" else "")
         if (iid, colid) == self._tip_cell:
             return
         self._tip_hide()
@@ -521,12 +557,8 @@ class App(_Root):
         if not in_cell:
             return
         text = str(self.table.set(iid, colname))
-        if colname == "imdb":
-            it = self._row_items.get(iid)
-            text = self.t("imdb_cell_tip") if it and it.langs else ""
-        elif not text or tkfont.Font(font=("Segoe UI", 9)).measure(text) + 12 <= int(self.table.column(colid, "width")):
-            return
-        if not text:
+        if colname == "imdb" or not text or \
+                tkfont.Font(font=("Segoe UI", 9)).measure(text) + 12 <= int(self.table.column(colid, "width")):
             return
         self._tip = tk.Toplevel(self)
         self._tip.wm_overrideredirect(True)
@@ -578,12 +610,12 @@ class App(_Root):
         ttk.Button(b, text=self.t("st_save"), command=ok, style="Accent.TButton").pack(side="left", padx=4)
         ttk.Button(b, text=self.t("st_cancel"), command=win.destroy).pack(side="left", padx=4)
 
-    def _rescan(self, items: list, ttid: str):
+    def _rescan(self, items: list, ttid: str | None):
         self.cancel.clear()
         ui = self.ui
         # sofort sichtbar: ID in den Zeilen, Sprachzellen auf „…", Statuszeile + pulsierender Balken
         for it in items:
-            it.imdb_id, it.imdb_source = ttid, "manual"
+            it.imdb_id, it.imdb_source = (ttid, "manual") if ttid else (None, "")
             for l in it.langs:
                 it.status[l] = "pending"
         self._refresh_rows(items)
@@ -672,6 +704,7 @@ class App(_Root):
 
     def _busy(self, on: bool):
         self.start_btn.config(text=self.t("cancel_run") if on else self.t("start"))
+        self.after_idle(self._place_imdb_buttons)     # Zell-Buttons während der Arbeit sperren
         if on:
             self.start_btn.state(["!disabled"])   # als Abbrechen immer erreichbar
             self.after(100, self._poll)
@@ -773,12 +806,21 @@ class App(_Root):
             self._log_raw(f"  ✖ {m}  —  {self.t('s_missing')}", ("fail",))
         for d in res.noaccess:
             self._log_raw(f"  ✖ {d}  —  {self.t('p_noaccess', n='')}".replace("  —   ", "  —  "), ("fail",))
-        if res.missing:
-            self._log_raw("  " + self.t("missing_hint"), ("sub",))
+        # Tipps mit Abstand und als Hinweis markiert — nicht als Begründung der Zeilen darüber.
+        # Der Erkennungs-Tipp nur, wenn ein Video in KEINER Sprache etwas hatte und keine ID gesetzt ist.
+        unrecognized = [it for it in (self.scan.items if self.scan else []) if it.langs and not it.imdb_id
+                        and not any(it.status.get(l) in ("synced", "suspect", "unsynced", "found") for l in it.langs)]
+        tips = []
+        if unrecognized:
+            tips.append((self.t("missing_hint"), ("sep",)))
         if res.suspect:
-            self._log_raw("  " + self.t("suspect_hint"), ("warn",))
+            tips.append((self.t("suspect_hint"), ("warn",)))
         if res.noaccess:
-            self._log_raw("  " + self.t("noaccess_hint"), ("sub",))
+            tips.append((self.t("noaccess_hint"), ("sep",)))
+        if tips:
+            self._log_raw("", ())
+            for text, tags in tips:
+                self._log_raw("ℹ " + text, tags)
 
     # ---- Einstellungen ------------------------------------------------------
     def settings(self):
@@ -829,10 +871,45 @@ class App(_Root):
         b = ttk.Frame(outer, style="Bg.TFrame"); b.pack(pady=(2, 0))
         ttk.Button(b, text=self.t("st_save"), command=ok, style="Accent.TButton").pack(side="left", padx=4)
         ttk.Button(b, text=self.t("st_cancel"), command=win.destroy).pack(side="left", padx=4)
-        foot = tk.Label(outer, text=f"SuperSubber {__version__}  ·  github.com/Cosmopolyte/supersubber",
+        footrow = ttk.Frame(outer, style="Bg.TFrame"); footrow.pack(fill="x", pady=(12, 0))
+        foot = tk.Label(footrow, text=f"SuperSubber {__version__}  ·  github.com/Cosmopolyte/supersubber",
                         bg=BG, fg=GREY, cursor="hand2", font=("Segoe UI", 8))
-        foot.pack(pady=(10, 0))
+        foot.pack(side="left")
         foot.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/Cosmopolyte/supersubber"))
+        ttk.Button(footrow, text=self.t("st_check_updates"), style="Square.TButton",
+                   command=lambda: self.check_updates(win)).pack(side="right")
+
+    def check_updates(self, parent=None):
+        """Neuestes GitHub-Release abfragen und mit der eigenen Version vergleichen. Kein Auto-Update."""
+        import json
+        import urllib.request
+        url = "https://api.github.com/repos/Cosmopolyte/supersubber/releases/latest"
+
+        def vt(v: str) -> tuple:
+            return tuple(int(x) for x in re.findall(r"\d+", v)[:3])
+
+        def work():
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": f"supersubber/{__version__}",
+                                                           "Accept": "application/vnd.github+json"})
+                with urllib.request.urlopen(req, timeout=8) as r:
+                    data = json.load(r)
+                tag = str(data.get("tag_name", "")).lstrip("v")
+                page = data.get("html_url") or "https://github.com/Cosmopolyte/supersubber/releases"
+                self.after(0, lambda: done(tag, page, None))
+            except Exception as e:  # noqa: BLE001
+                self.after(0, lambda: done("", "", f"{type(e).__name__}: {e}"))
+
+        def done(tag, page, err):
+            if err:
+                messagebox.showwarning("SuperSubber", self.t("upd_err", err=err), parent=parent); return
+            if tag and vt(tag) > vt(__version__):
+                if messagebox.askyesno("SuperSubber", self.t("upd_new", new=tag, cur=__version__), parent=parent):
+                    webbrowser.open(page)
+            else:
+                messagebox.showinfo("SuperSubber", self.t("upd_latest", cur=__version__), parent=parent)
+
+        threading.Thread(target=work, daemon=True).start()
 
     # ---- Log ----------------------------------------------------------------
     def _log_raw(self, s: str, tags: tuple[str, ...] = ()):

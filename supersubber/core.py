@@ -361,6 +361,37 @@ def _score_fn(v, imdb_id: str | None = None):
     return score
 
 
+def _title_from_candidates(cands: list, episode: bool) -> str:
+    """Titel aus den Provider-Treffern (häufigster Wert) — die kennen den Film/die Serie zur IMDb-ID.
+    opensubtitlescom: series_title/movie_title; opensubtitles: movie_name („\"MobLand\" Stick or Twist");
+    gestdown: series."""
+    from collections import Counter
+    names: Counter = Counter()
+    for s in cands:
+        n = ""
+        if episode:
+            if s.provider_name == "opensubtitles":
+                # .org: series_title ist hier irreführend der Episodentitel — der Serienname steht in movie_name
+                m = re.match(r'^"([^"]+)"', str(getattr(s, "movie_name", "") or ""))
+                n = m.group(1) if m else ""
+            elif s.provider_name == "opensubtitlescom":
+                n = getattr(s, "series_title", None) or ""
+            else:
+                n = getattr(s, "series", None) or ""
+        else:
+            n = getattr(s, "movie_title", None) or ""
+            if not n:
+                mn = str(getattr(s, "movie_name", "") or "")
+                n = "" if mn.startswith('"') else mn
+        if n:
+            y = getattr(s, "movie_year", None)
+            names[(n.strip(), y if not episode else None)] += 1
+    if not names:
+        return ""
+    (name, year), _ = names.most_common(1)[0]
+    return f"{name} · {year}" if year else name
+
+
 def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None) -> None:
     """Erkennen + NFO + Provider-Suche + Bewertung für ein Item. Lädt nichts herunter."""
     from babelfish import Language
@@ -391,12 +422,16 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None)
             it.min_score = episode_scores["series"] + episode_scores["season"] + episode_scores["episode"]
         else:
             it.min_score = movie_scores["title"] + (movie_scores["year"] if getattr(v, "year", None) else 0)
-        if manual_id:
-            # manuelle ID ersetzt die Erkennung — in der Tabelle sichtbar machen
-            se = it.recognized.split(" · ")[-1] if isinstance(v, Episode) and " · " in it.recognized else ""
-            it.recognized = f"IMDb {manual_id}" + (f" · {se}" if se else "")
         want = {Language.fromietf(l) for l in it.langs}
         it.candidates = list(pool.list_subtitles(v, want))
+        if it.imdb_id:
+            # mit ID zählt, was die Provider zur ID sagen — nicht der aus dem Pfad geratene Titel
+            se = f"S{v.season:02d}E{v.episode:02d}" if isinstance(v, Episode) and v.season is not None \
+                and v.episode is not None else ""
+            title = _title_from_candidates(it.candidates, isinstance(v, Episode)) or f"IMDb {it.imdb_id}"
+            it.recognized = " · ".join(x for x in (title, se) if x)
+            if manual_id and not it.recognized.startswith("IMDb "):
+                it.recognized += f" · IMDb {manual_id}"
         score = _score_fn(v, it.imdb_id)
         for lang in it.langs:
             L = Language.fromietf(lang)
@@ -460,9 +495,10 @@ def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: 
     return sc
 
 
-def rescan(items: list, imdb_id: str, cfg: dict, log: Log, cancel: threading.Event,
+def rescan(items: list, imdb_id: str | None, cfg: dict, log: Log, cancel: threading.Event,
            tr: Tr = _tr_fallback, on_item: Callable | None = None) -> None:
-    """Nachsuche mit manueller IMDb-ID für einzelne Items (aus der Tabelle); on_item meldet jedes fertige Item."""
+    """Nachsuche für einzelne Items (aus der Tabelle): mit manueller IMDb-ID, oder ohne (ID entfernt →
+    wieder Erkennung aus Dateiname/NFO). on_item meldet jedes fertige Item."""
     from subliminal import ProviderPool
     _region_setup()
     providers, provider_configs = _providers(cfg, log, tr)
@@ -470,7 +506,11 @@ def rescan(items: list, imdb_id: str, cfg: dict, log: Log, cancel: threading.Eve
         for it in items:
             if cancel.is_set():
                 break
-            log(tr("c_imdb_via", id=imdb_id, name=it.video.name))
+            if imdb_id:
+                log(tr("c_imdb_via", id=imdb_id, name=it.video.name))
+            else:
+                it.imdb_id, it.imdb_source = None, ""
+                log(tr("c_research", name=it.video.name))
             _search_item(pool, it, log, tr, manual_id=imdb_id)
             hits = [l for l in it.langs if it.found.get(l)]
             log(tr("c_scan_item", name=it.video.name, rec=it.recognized or "?",

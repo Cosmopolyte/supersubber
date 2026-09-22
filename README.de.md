@@ -21,13 +21,13 @@ Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar. Das Sprachen
 
 **NFO-Dateien:** Liegt neben dem Video eine `.nfo` mit IMDb-Link, sucht SuperSubber sofort über diese ID — Originaltitel, Jahr oder Schreibweise im Dateinamen spielen dann keine Rolle mehr.
 
-**IMDb-Suche:** Zeigt die Tabelle für ein Video keine Treffer oder ist die Erkennung falsch, auf die **IMDb**-Zelle der Zeile klicken und IMDb-ID oder -Link einfügen — die Zeile wird sofort neu gesucht. Bei einer Folge lässt sich die Serien-ID in einem Schritt auf alle Folgen dieser Serie übernehmen.
+**IMDb-Suche:** Zeigt die Tabelle für ein Video keine Treffer oder ist die Erkennung falsch, in der IMDb-Spalte auf **SET** klicken und IMDb-ID oder -Link einfügen — die Zeile wird sofort neu gesucht und zeigt den Titel, den die Provider zu dieser ID melden. Bei einer Folge lässt sich die Serien-ID in einem Schritt auf alle Folgen dieser Serie übernehmen. **EDIT** ändert die ID, **✕** entfernt sie.
 
 **„Kein Untertitel gefunden":** Die Erkennung läuft über den kompletten Pfad plus OpenSubtitles-Datei-Hash. Serien brauchen den Original-Serientitel irgendwo im Pfad und `SxxExx` im Dateinamen — der Ordnername reicht, z. B. `The.Expanse\S02\S02E05.Home.mp4`, und die Sprache des Episodentitels ist egal. Filme: Originaltitel + Jahr im Dateinamen. Es wird nicht geraten.
 
 ## Einstellungen
 
-Die freien Quellen haben kein festes Tageskontingent; ein optionaler, kostenloser OpenSubtitles.com-Login bringt zusätzlich 20 Downloads pro Tag. Das Passwort wird per Windows DPAPI verschlüsselt in `%APPDATA%\supersubber\config.json` abgelegt.
+Die freien Quellen haben kein festes Tageskontingent; ein optionaler, kostenloser OpenSubtitles.com-Login bringt zusätzlich 20 Downloads pro Tag. Das Passwort wird per Windows DPAPI verschlüsselt in `%APPDATA%\supersubber\config.json` abgelegt. **Auf Updates prüfen** fragt GitHub nach dem neuesten Release — installiert wird nichts automatisch.
 
 <p align="center"><img src="assets/screenshot-settings.png" alt="Einstellungen" width="380"></p>
 

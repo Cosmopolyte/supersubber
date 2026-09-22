@@ -23,13 +23,13 @@ The UI speaks English, German and Russian. The subtitle-language dropdown starts
 
 **NFO files:** if a `.nfo` next to the video contains an IMDb link, SuperSubber searches by that ID right away — original title, year or wording in the filename no longer matter.
 
-**IMDb lookup:** if the table shows no hits for a video, or the recognition is wrong, click its **IMDb** cell and paste the IMDb ID or link — the row is searched again immediately. For an episode you can apply the show's ID to all episodes of that show in one go.
+**IMDb lookup:** if the table shows no hits for a video, or the recognition is wrong, click **SET** in its IMDb column and paste the IMDb ID or link — the row is searched again immediately and shows the title the providers report for that ID. For an episode you can apply the show's ID to all episodes of that show in one go. **EDIT** changes the ID, **✕** removes it.
 
 **"No subtitles found":** detection uses the full path plus the OpenSubtitles file hash. TV shows need the original show title somewhere in the path and `SxxExx` in the filename — the folder name is enough, e.g. `The.Expanse\S02\S02E05.Home.mp4`, and the episode title's language doesn't matter. Movies need original title + year in the filename. SuperSubber never guesses.
 
 ## Settings
 
-The free providers have no fixed daily quota; an optional free OpenSubtitles.com login adds 20 downloads per day on top. The password is stored encrypted with Windows DPAPI in `%APPDATA%\supersubber\config.json`.
+The free providers have no fixed daily quota; an optional free OpenSubtitles.com login adds 20 downloads per day on top. The password is stored encrypted with Windows DPAPI in `%APPDATA%\supersubber\config.json`. **Check for updates** asks GitHub for the latest release — nothing is installed automatically.
 
 <p align="center"><img src="assets/screenshot-settings.png" alt="Settings dialog" width="380"></p>
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0 — 2026-09-22
+- Real buttons in the IMDb column: SET when empty, EDIT and a clear button once an ID is set. Clearing returns to the recognition from filename and NFO.
+- With an IMDb ID, Recognized-as shows the title the providers report for that ID, plus episode and ID.
+- Check for updates in the settings dialog: asks GitHub for the latest release and offers the download page.
+- Browse button sits before the folder field so it stays visible on wide windows.
+- Tips at the end of the log are set apart from the result lines and only appear when a video was not recognized at all.
+
 ## 1.2.1 — 2026-09-22
 - Fix: a manually set IMDb ID no longer loses against the title guessed from the folder name. Subtitles found via the ID were rejected by the minimum score when the folder was named after a different title.
 - Searching via IMDb ID now shows immediately: the ID appears in the row, language cells show "...", the status line and progress bar animate, rows update one by one.
