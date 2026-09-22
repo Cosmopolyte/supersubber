@@ -257,10 +257,9 @@ class App(_Root):
         self.spinner.pack(side="left")
         self.status = ttk.Label(srow, text="")
         self.status.pack(side="left", fill="x")
-        ttk.Button(srow, text=self.t("save_log"), style="Square.TButton", command=self.save_log).pack(side="right")
 
         self._logf = ttk.Frame(sec)
-        self._logf.pack(fill="both", expand=True, padx=10, pady=(4, 10))
+        self._logf.pack(fill="both", expand=True, padx=10, pady=(4, 6))
         self.log = tk.Text(self._logf, height=9, state="disabled", font=("Consolas", 9), wrap="word",
                            relief="flat", highlightthickness=1, highlightbackground=CARD_EDGE,
                            bg=IDLE_BG, fg=INK)
@@ -274,6 +273,8 @@ class App(_Root):
         self.log.tag_configure("sep", foreground="#8a9a95")
         sb.pack(side="right", fill="y")
         self.log.pack(side="left", fill="both", expand=True)
+        lfoot = ttk.Frame(sec); lfoot.pack(fill="x", padx=10, pady=(0, 10))
+        ttk.Button(lfoot, text=self.t("save_log"), style="Square.TButton", command=self.save_log).pack(side="right")
 
     def _set_result(self, text: str, fg: str = ""):
         self.status.config(text=text)
@@ -299,7 +300,7 @@ class App(_Root):
         for code in self.cfg["known_languages"]:
             var = tk.BooleanVar(value=code in self.cfg["languages"])
             self.lang_sel[code] = var
-            menu.add_checkbutton(label=i18n.lang_name(code), variable=var,
+            menu.add_checkbutton(label=i18n.lang_name_ui(self.ui, code), variable=var,
                                  command=self._on_lang_toggle)
         self.lang_btn.configure(menu=menu)
         self._update_lang_btn()
@@ -313,7 +314,7 @@ class App(_Root):
             self._trigger_scan()             # andere Sprachen = anderer Vorlauf
 
     def _update_lang_btn(self):
-        sel = [i18n.lang_name(c) for c, v in self.lang_sel.items() if v.get()]
+        sel = [i18n.lang_name_ui(self.ui, c) for c, v in self.lang_sel.items() if v.get()]
         self.lang_btn.configure(text=", ".join(sel) if sel else "—")
 
     def lang_picker(self):
@@ -354,9 +355,12 @@ class App(_Root):
                 w.destroy()
             q = filter_var.get().strip().casefold()
             for code, (native, english) in entries.items():
-                if q and q not in native.casefold() and q not in english.casefold() and q not in code.casefold():
+                uiname = i18n.lang_name_ui(self.ui, code)
+                if q and q not in native.casefold() and q not in english.casefold() \
+                        and q not in uiname.casefold() and q not in code.casefold():
                     continue
-                label = native if native.casefold() == english.casefold() else f"{native}   ({english})"
+                # Name in der App-Sprache, dahinter die Eigenschreibweise zum Wiedererkennen
+                label = uiname if uiname.casefold() == native.casefold() else f"{uiname}   ·   {native}"
                 tk.Checkbutton(inner, text=label, variable=vars_[code], bg="white", fg=INK,
                                activebackground="white", activeforeground=INK, anchor="w",
                                font=("Segoe UI", 10), padx=8).pack(fill="x")
@@ -444,7 +448,7 @@ class App(_Root):
 
     # ---- Tabelle -------------------------------------------------------------
     _SYM = {"present": "✔", "found": "✔", "synced": "✔", "suspect": "⚠", "unsynced": "⚠",
-            "none": "✖", "missing": "✖"}
+            "none": "✖", "missing": "✖", "pending": "…"}
 
     def _setup_columns(self, langs: list[str]):
         """Spalten neu aufbauen, wenn sich die Sprachauswahl geändert hat."""
@@ -467,7 +471,7 @@ class App(_Root):
         vals = [it.video.name, it.recognized or ("—" if it.langs else "")]
         for l in self._table_langs:
             st = it.status.get(l)
-            vals.append(f"{self._SYM.get(st, '')} {self.t('s_' + st)}" if st else "")
+            vals.append("…" if st == "pending" else (f"{self._SYM.get(st, '')} {self.t('s_' + st)}" if st else ""))
         vals.append(it.imdb_id or (self.t("imdb_set") if it.langs else ""))
         if not it.langs:
             tag = "present"
@@ -506,14 +510,23 @@ class App(_Root):
         """Abgeschnittene Zellinhalte als Tooltip zeigen."""
         from tkinter import font as tkfont
         iid, colid = self.table.identify_row(event.y), self.table.identify_column(event.x)
+        in_cell = bool(iid and colid) and self.table.identify("region", event.x, event.y) == "cell"
+        colname = self.table.column(colid, "id") if colid else ""
+        # IMDb-Zelle ist klickbar → Handzeiger
+        self.table.configure(cursor="hand2" if in_cell and colname == "imdb" else "")
         if (iid, colid) == self._tip_cell:
             return
         self._tip_hide()
         self._tip_cell = (iid, colid)
-        if not iid or not colid or self.table.identify("region", event.x, event.y) != "cell":
+        if not in_cell:
             return
-        text = str(self.table.set(iid, self.table.column(colid, "id")))
-        if not text or tkfont.Font(font=("Segoe UI", 9)).measure(text) + 12 <= int(self.table.column(colid, "width")):
+        text = str(self.table.set(iid, colname))
+        if colname == "imdb":
+            it = self._row_items.get(iid)
+            text = self.t("imdb_cell_tip") if it and it.langs else ""
+        elif not text or tkfont.Font(font=("Segoe UI", 9)).measure(text) + 12 <= int(self.table.column(colid, "width")):
+            return
+        if not text:
             return
         self._tip = tk.Toplevel(self)
         self._tip.wm_overrideredirect(True)
@@ -568,10 +581,20 @@ class App(_Root):
     def _rescan(self, items: list, ttid: str):
         self.cancel.clear()
         ui = self.ui
+        # sofort sichtbar: ID in den Zeilen, Sprachzellen auf „…", Statuszeile + pulsierender Balken
+        for it in items:
+            it.imdb_id, it.imdb_source = ttid, "manual"
+            for l in it.langs:
+                it.status[l] = "pending"
+        self._refresh_rows(items)
+        self.status.config(text=self.t("rescanning"))
+        self.bar.pulse()
+        self.start_btn.state(["disabled"])
 
         def work():
             core.rescan(items, ttid, self.cfg, log=lambda s: self.q.put(("log", s)), cancel=self.cancel,
-                        tr=lambda key, **kw: i18n.tr(ui, key, **kw))
+                        tr=lambda key, **kw: i18n.tr(ui, key, **kw),
+                        on_item=lambda it: self.q.put(("rescan_item", it)))
             self.q.put(("rescan_done", items))
 
         self.worker = threading.Thread(target=work, daemon=True)
@@ -702,6 +725,8 @@ class App(_Root):
                         self.status.config(text=m)
                 elif item[0] == "scan_done":
                     self._scan_finished(item[1], item[2]); return
+                elif item[0] == "rescan_item":
+                    self._refresh_rows([item[1]])
                 elif item[0] == "rescan_done":
                     self._rescan_finished(item[1]); return
                 elif item[0] == "done":

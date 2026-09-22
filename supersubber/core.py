@@ -330,11 +330,17 @@ def _recognized(v) -> str:
     return " · ".join(x for x in (getattr(v, "title", None), str(year) if year else "") if x)
 
 
-def _score_fn(v):
+ID_PROVIDERS = {"opensubtitles", "opensubtitlescom"}   # suchen bei gesetzter IMDb-ID gezielt nach dieser ID
+
+
+def _score_fn(v, imdb_id: str | None = None):
     """Bewertung wie subliminal, plus Bonus für die Release-Gruppe des Rips (…-SHORTBREHD im
     Sub-Release-Namen → für exakt diesen Schnitt getimt). Bonus < Jahr-Gewicht, hebt also keinen
-    Kandidaten mit falschem Jahr über die Schwelle."""
-    from subliminal.score import compute_score
+    Kandidaten mit falschem Jahr über die Schwelle.
+    Mit IMDb-ID: Bei Providern, die per ID suchen, gilt der Titel-/Serien-Treffer als erfüllt — der aus
+    dem Dateinamen geratene Titel darf dann nicht mehr blockieren (Ordner „Leonor…" mit MobLand-Folgen)."""
+    from subliminal.score import compute_score, episode_scores, movie_scores
+    from subliminal.video import Episode
     group = (getattr(v, "release_group", None) or "").lower()
 
     def score(sub, vid, **kw):
@@ -342,6 +348,15 @@ def _score_fn(v):
         rel = str(getattr(sub, "release", None) or getattr(sub, "info", None) or "").lower()
         if group and len(group) >= 3 and group in rel:
             s_ += RELEASE_GROUP_BONUS
+        if imdb_id and sub.provider_name in ID_PROVIDERS:
+            matches = sub.get_matches(vid)
+            if "hash" in matches:
+                return s_
+            if isinstance(vid, Episode):
+                if "series" not in matches and {"season", "episode"} <= matches:
+                    s_ += episode_scores["series"]
+            elif "title" not in matches:
+                s_ += movie_scores["title"] + movie_scores["year"]
         return s_
     return score
 
@@ -376,9 +391,13 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None)
             it.min_score = episode_scores["series"] + episode_scores["season"] + episode_scores["episode"]
         else:
             it.min_score = movie_scores["title"] + (movie_scores["year"] if getattr(v, "year", None) else 0)
+        if manual_id:
+            # manuelle ID ersetzt die Erkennung — in der Tabelle sichtbar machen
+            se = it.recognized.split(" · ")[-1] if isinstance(v, Episode) and " · " in it.recognized else ""
+            it.recognized = f"IMDb {manual_id}" + (f" · {se}" if se else "")
         want = {Language.fromietf(l) for l in it.langs}
         it.candidates = list(pool.list_subtitles(v, want))
-        score = _score_fn(v)
+        score = _score_fn(v, it.imdb_id)
         for lang in it.langs:
             L = Language.fromietf(lang)
             best = max((score(s, v) for s in it.candidates if s.language == L), default=0)
@@ -442,8 +461,8 @@ def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: 
 
 
 def rescan(items: list, imdb_id: str, cfg: dict, log: Log, cancel: threading.Event,
-           tr: Tr = _tr_fallback) -> None:
-    """Nachsuche mit manueller IMDb-ID für einzelne Items (aus der Tabelle)."""
+           tr: Tr = _tr_fallback, on_item: Callable | None = None) -> None:
+    """Nachsuche mit manueller IMDb-ID für einzelne Items (aus der Tabelle); on_item meldet jedes fertige Item."""
     from subliminal import ProviderPool
     _region_setup()
     providers, provider_configs = _providers(cfg, log, tr)
@@ -456,6 +475,8 @@ def rescan(items: list, imdb_id: str, cfg: dict, log: Log, cancel: threading.Eve
             hits = [l for l in it.langs if it.found.get(l)]
             log(tr("c_scan_item", name=it.video.name, rec=it.recognized or "?",
                    hits=", ".join(hits) if hits else "—"))
+            if on_item:
+                on_item(it)
 
 
 def _download_item(pool, it: Item, tmp: Path, log: Log, tr: Tr) -> dict:
@@ -468,7 +489,7 @@ def _download_item(pool, it: Item, tmp: Path, log: Log, tr: Tr) -> dict:
     want = {Language.fromietf(l) for l in it.langs if it.found.get(l)}
     if not want or v is None:
         return got
-    score = _score_fn(v)
+    score = _score_fn(v, it.imdb_id)
     minutes = _duration_min(it.video)
     ignore: list[str] = []
     try:

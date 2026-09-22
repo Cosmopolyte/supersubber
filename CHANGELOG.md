@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.1 — 2026-09-22
+- Fix: a manually set IMDb ID no longer loses against the title guessed from the folder name. Subtitles found via the ID were rejected by the minimum score when the folder was named after a different title.
+- Searching via IMDb ID now shows immediately: the ID appears in the row, language cells show "...", the status line and progress bar animate, rows update one by one.
+- Language names in the dropdown and the language list are shown in the app language, the native spelling next to them.
+- "Recognized as" shows the IMDb ID once one is set manually.
+- IMDb cell reads "set" with a pencil, hand cursor and a hint on hover.
+- Save log button moved below the log.
+
 ## 1.2.0 — 2026-09-22
 - Table: one column per language with the language names in the app language, visible column separators, striped rows, tooltips for truncated cells.
 - IMDb ID is set per row by clicking its IMDb cell; for episodes the same ID can be applied to all episodes of that show in one go. The field and buttons below the table are gone.
