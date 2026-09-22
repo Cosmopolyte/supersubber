@@ -1,4 +1,4 @@
-# supersubber — Untertitel automatisch laden & synchronisieren
+# SuperSubber — Untertitel automatisch laden & synchronisieren
 
 + Open Source, portables Windows-Tool
 + Lädt automatisch fehlende Untertitel für alle Videos in einem Ordner (rekursiv)
@@ -19,7 +19,7 @@ Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar (⚙ → App-
 
 **Eigenes Untertitel-File syncen:** Ein `.srt`/`.ass` in die Drop-Zone ziehen (allein oder zusammen mit dem Video) — liegt genau ein Video im selben Ordner, wird es automatisch genommen, sonst fragt ein Dateidialog. Ein verdrängtes File wird einmalig als `*.orig` gesichert (diese Endung ignorieren Player).
 
-**NFO-Dateien:** Liegt neben dem Video eine `.nfo` mit IMDb-Link (Release-NFOs haben ihn fast immer, Kodi/Jellyfin-`movie.nfo`/`tvshow.nfo` ebenso), sucht supersubber sofort über diese ID — Originaltitel, Jahr oder Schreibweise im Dateinamen spielen dann keine Rolle mehr.
+**NFO-Dateien:** Liegt neben dem Video eine `.nfo` mit IMDb-Link (Release-NFOs haben ihn fast immer, Kodi/Jellyfin-`movie.nfo`/`tvshow.nfo` ebenso), sucht SuperSubber sofort über diese ID — Originaltitel, Jahr oder Schreibweise im Dateinamen spielen dann keine Rolle mehr.
 
 **IMDb-Nachsuche:** Wird ein Video nicht erkannt, erscheint nach dem Lauf der Button „IMDb-ID angeben…" — IMDb-ID oder -Link eintragen (bei Serien die ID der Serie) und erneut suchen lassen.
 

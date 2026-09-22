@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.1 — 2026-09-22
+- Display name is now SuperSubber (title bar, dialogs, docs); file, package and config names stay lowercase.
+
 ## 1.0.0 — 2026-09-22
 First stable release after a month of daily use on ~60 videos.
 - Version is shown in the title bar and in the settings dialog (with a link to this repository).

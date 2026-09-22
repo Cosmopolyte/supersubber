@@ -1,6 +1,6 @@
 # Third-party components
 
-supersubber invokes alass and ffmpeg as separate processes (no linking); subliminal is used as a Python library.
+SuperSubber invokes alass and ffmpeg as separate processes (no linking); subliminal is used as a Python library.
 
 | Component | Version | License | Source |
 |---|---|---|---|
