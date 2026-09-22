@@ -1,8 +1,10 @@
-# supersubber — Find & Sync Subtitles
+# supersubber — auto-download & auto-sync subtitles
 
-Portable Windows tool: downloads missing subtitles for every video in a folder (recursively) and synchronizes them against the audio track — fixing framerate drift (23.976 ↔ 25 fps), constant offsets and ad-break jumps. The result is saved as `<video>.<lang>.srt` next to the video, where Kodi, VLC and friends pick it up automatically.
-
-Under the hood: [subliminal](https://github.com/Diaoul/subliminal) (search & download from multiple providers) + [alass](https://github.com/kaegi/alass) (sync via voice-activity analysis). See `THIRD-PARTY.md`.
++ Open source, portable Windows tool
++ Automatically downloads missing subtitles for every video in a folder (recursively)
++ Synchronizes subtitles against the audio track of the video
++ Fixes framerate drift (23.976 ↔ 25 fps), constant offsets and ad-break jumps
++ The resulting subtitles are saved as `<video>.<lang>.srt` next to the video
 
 *Deutsche Anleitung: [README.de.md](README.de.md)*
 
@@ -11,9 +13,9 @@ Under the hood: [subliminal](https://github.com/Diaoul/subliminal) (search & dow
 ## Usage
 
 1. Download the latest release zip, unpack it anywhere, run `supersubber.exe` — portable, no installation.
-2. Drag a folder into the window (or pick one), tick the subtitle languages you want, hit **Start**.
+2. Drag a video or folder into the window (or pick one), tick the subtitle languages you want, hit **Start**.
 3. Watch the per-episode progress; a summary appears at the end. Videos that already have subtitles in a language are skipped, so re-running is always safe.
-4. `supersubber.exe <folder> [--lang ru,de]` starts processing that folder right away.
+4. CLI usage: `supersubber.exe <folder> [--lang ru,de]` starts processing that folder right away.
 
 The UI speaks English, German and Russian (⚙ → app language; the Windows display language is picked on first start). The subtitle-language dropdown starts with the ten most common languages — the **Languages…** button opens a searchable list of ~40 more, shown in their native names.
 
@@ -27,7 +29,7 @@ The UI speaks English, German and Russian (⚙ → app language; the Windows dis
 
 ## Settings
 
-Optional OpenSubtitles.com login (a free account adds 20 downloads/day on top of the free providers; the password is stored encrypted with Windows DPAPI in `%APPDATA%\supersubber\config.json`).
+On top of the free providers (no fixed daily quota), an optional free OpenSubtitles.com login adds 20 downloads per day. The password is stored encrypted with Windows DPAPI in `%APPDATA%\supersubber\config.json`.
 
 <p align="center"><img src="assets/screenshot-settings.png" alt="Settings dialog" width="380"></p>
 
@@ -36,6 +38,7 @@ Optional OpenSubtitles.com login (a free account adds 20 downloads/day on top of
 - **Windows only.** Uses DPAPI and ships Windows binaries; there are no plans for other platforms right now.
 - **SmartScreen warning:** the executable is not code-signed (this is a free hobby tool). Windows may warn on first start — "More info" → "Run anyway", or build from source below.
 - **Provided as-is.** No support promises; issues and PRs are welcome but may take a while.
+- **Under the hood:** open-source tools [subliminal](https://github.com/Diaoul/subliminal) (search & download from multiple providers) + [alass](https://github.com/kaegi/alass) (sync via voice-activity analysis). See `THIRD-PARTY.md`.
 
 ## Building from source
 
