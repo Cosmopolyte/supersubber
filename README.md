@@ -8,13 +8,13 @@
 
 *Deutsche Anleitung: [README.de.md](README.de.md)*
 
-<p align="center"><img src="assets/screenshot-main.png" alt="Main window after a finished run" width="560"></p>
+<p align="center"><img src="assets/screenshot-main.png" alt="Main window after a finished run" width="640"></p>
 
 ## Usage
 
 1. Download the latest release zip, unpack it anywhere, run `supersubber.exe` — portable, no installation.
-2. Drag a video or folder into the window or pick one, tick the subtitle languages you want, hit **Start**.
-3. Watch the per-episode progress; a summary appears at the end. Videos that already have subtitles in a language are skipped, so re-running is always safe.
+2. Drag a video or folder into the window or pick one. SuperSubber searches the providers right away and lists every video in a table: what it was recognized as, and whether subtitles were found for each language. Nothing is downloaded yet.
+3. Hit **Start** once the search is done. Watch the per-video progress; a summary appears at the end. Videos that already have subtitles in a language are skipped, so re-running is always safe.
 4. CLI usage: `supersubber.exe <folder> [--lang ru,de]` starts processing that folder right away.
 
 The UI speaks English, German and Russian. The subtitle-language dropdown starts with the ten most common languages — the **Languages…** button opens a searchable list of ~40 more, shown in their native names.
@@ -23,7 +23,7 @@ The UI speaks English, German and Russian. The subtitle-language dropdown starts
 
 **NFO files:** if a `.nfo` next to the video contains an IMDb link, SuperSubber searches by that ID right away — original title, year or wording in the filename no longer matter.
 
-**IMDb lookup:** if a video isn't recognized, a "Specify IMDb ID…" button appears after the run — paste the IMDb ID or link and search again. For TV shows use the ID of the show.
+**IMDb lookup:** if the table shows no hits for a video, select its row, paste the IMDb ID or link into the field below the table and click **Apply** — the row is searched again immediately. For a TV show use the ID of the show and **Apply to all without hits**, so every episode gets it in one go.
 
 **"No subtitles found":** detection uses the full path plus the OpenSubtitles file hash. TV shows need the original show title somewhere in the path and `SxxExx` in the filename — the folder name is enough, e.g. `The.Expanse\S02\S02E05.Home.mp4`, and the episode title's language doesn't matter. Movies need original title + year in the filename. SuperSubber never guesses.
 

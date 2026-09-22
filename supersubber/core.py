@@ -279,58 +279,196 @@ def _ensure_utf8(path: Path) -> bool:
     return True
 
 
-def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
-                   log: Log, tr: Tr, cancel: threading.Event, imdb_id: str | None = None,
-                   subprog: Callable[[float], None] | None = None):
+@dataclass
+class Item:
+    """Ein Video im Vorlauf: erkannt, gesucht, bewertet — noch nichts geladen."""
+    video: Path
+    langs: list[str]                                  # Sprachen, die noch fehlen (leer = alles vorhanden)
+    v: object = None                                  # subliminal-Video (guessit + Hash)
+    recognized: str = ""                              # „Whistle · 2025" / „Silo · S03E10"
+    imdb_id: str | None = None
+    imdb_source: str = ""                             # "nfo" | "manual" | ""
+    candidates: list = field(default_factory=list)    # Provider-Kandidaten aller Sprachen
+    min_score: int = 0
+    group: str = ""                                   # Release-Gruppe des Rips
+    found: dict = field(default_factory=dict)         # lang → True/False (Kandidat über Schwelle)
+    status: dict = field(default_factory=dict)        # lang → present|found|none|synced|suspect|unsynced|missing
+    error: str | None = None
+
+
+@dataclass
+class Scan:
+    folder: str
+    languages: list[str]
+    items: list = field(default_factory=list)         # list[Item]
+    noaccess: list[str] = field(default_factory=list)
+    cancelled: bool = False
+    error: str | None = None
+
+    @property
+    def skipped(self) -> int:
+        return sum(1 for it in self.items if not it.langs)
+
+    @property
+    def runnable(self) -> list:
+        return [it for it in self.items if any(it.found.get(l) for l in it.langs)]
+
+
+def _recognized(v) -> str:
+    from subliminal.video import Episode
+    if isinstance(v, Episode):
+        se = f"S{v.season:02d}E{v.episode:02d}" if v.season is not None and v.episode is not None else ""
+        return " · ".join(x for x in (v.series, se) if x)
+    year = getattr(v, "year", None)
+    return " · ".join(x for x in (getattr(v, "title", None), str(year) if year else "") if x)
+
+
+def _score_fn(v):
+    """Bewertung wie subliminal, plus Bonus für die Release-Gruppe des Rips (…-SHORTBREHD im
+    Sub-Release-Namen → für exakt diesen Schnitt getimt). Bonus < Jahr-Gewicht, hebt also keinen
+    Kandidaten mit falschem Jahr über die Schwelle."""
+    from subliminal.score import compute_score
+    group = (getattr(v, "release_group", None) or "").lower()
+
+    def score(sub, vid, **kw):
+        s_ = compute_score(sub, vid, **kw)
+        rel = str(getattr(sub, "release", None) or getattr(sub, "info", None) or "").lower()
+        if group and len(group) >= 3 and group in rel:
+            s_ += RELEASE_GROUP_BONUS
+        return s_
+    return score
+
+
+def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None) -> None:
+    """Erkennen + NFO + Provider-Suche + Bewertung für ein Item. Lädt nichts herunter."""
     from babelfish import Language
-    from subliminal import refine, save_subtitles, scan_video
-    from subliminal.score import compute_score, episode_scores, movie_scores
+    from subliminal import refine, scan_video
+    from subliminal.score import episode_scores, movie_scores
     from subliminal.video import Episode
 
-    sp = subprog or (lambda f: None)
-    got: dict[str, Path] = {}
+    it.candidates, it.found, it.error = [], {}, None
     try:
-        sp(0.03)
-        v = scan_video(str(video))
+        v = scan_video(str(it.video))
         refine(v, refiners=("hash",))
-        sp(0.1)
-        if not imdb_id:
-            imdb_id = _imdb_from_nfo(video, isinstance(v, Episode))
-            if imdb_id:
-                log(tr("c_imdb_nfo", id=imdb_id))
-        if imdb_id:
-            # imdb_id geht in die Provider-Query; bei Episoden zusätzlich als Serien-ID fürs Matching
-            v.imdb_id = imdb_id
+        it.v = v
+        it.recognized = _recognized(v)
+        if manual_id:
+            it.imdb_id, it.imdb_source = manual_id, "manual"
+        elif not it.imdb_id:
+            nfo = _imdb_from_nfo(it.video, isinstance(v, Episode))
+            if nfo:
+                it.imdb_id, it.imdb_source = nfo, "nfo"
+                log(tr("c_imdb_nfo", id=nfo))
+        if it.imdb_id:
+            v.imdb_id = it.imdb_id
             if isinstance(v, Episode):
-                v.series_imdb_id = imdb_id
-        want = {Language.fromietf(l) for l in langs}
-        found = pool.list_subtitles(v, want)
-        sp(0.25)
-        # Mindest-Score: Serien müssen Serie+Staffel+Episode treffen, Filme Titel+Jahr (ohne Jahr im
-        # Namen nur Titel). Hash- und IMDb-Treffer liegen darüber. Ohne Schwelle gewinnt sonst jeder
-        # Titel-Teilstring („Whistle" → „Fried Green Tomatoes at the Whistle Stop Café").
+                v.series_imdb_id = it.imdb_id
+        # Mindest-Score: Serien Serie+Staffel+Episode, Filme Titel+Jahr (ohne Jahr im Namen nur Titel).
+        # Hash- und IMDb-Treffer liegen darüber. Ohne Schwelle gewinnt jeder Titel-Teilstring.
         if isinstance(v, Episode):
-            min_score = episode_scores["series"] + episode_scores["season"] + episode_scores["episode"]
+            it.min_score = episode_scores["series"] + episode_scores["season"] + episode_scores["episode"]
         else:
-            min_score = movie_scores["title"] + (movie_scores["year"] if getattr(v, "year", None) else 0)
-        # Release-Gruppe des Rips (…-SHORTBREHD) im Sub-Release-Namen → Bonus: ein Sub derselben
-        # Gruppe ist garantiert für exakt diesen Schnitt getimt. Bonus bleibt unter dem Jahr-Gewicht,
-        # kann also keinen Kandidaten mit falschem Jahr über die Schwelle heben.
-        group = (getattr(v, "release_group", None) or "").lower()
+            it.min_score = movie_scores["title"] + (movie_scores["year"] if getattr(v, "year", None) else 0)
+        want = {Language.fromietf(l) for l in it.langs}
+        it.candidates = list(pool.list_subtitles(v, want))
+        score = _score_fn(v)
+        for lang in it.langs:
+            L = Language.fromietf(lang)
+            best = max((score(s, v) for s in it.candidates if s.language == L), default=0)
+            it.found[lang] = best >= it.min_score
+            it.status[lang] = "found" if it.found[lang] else "none"
+    except Exception as e:  # noqa: BLE001
+        it.error = f"{type(e).__name__}: {e}"
+        for lang in it.langs:
+            it.found[lang] = False
+            it.status[lang] = "none"
+        log(tr("c_dl_err", err=it.error))
 
-        def score(sub, vid, **kw):
-            s_ = compute_score(sub, vid, **kw)
-            rel = str(getattr(sub, "release", None) or getattr(sub, "info", None) or "").lower()
-            if group and len(group) >= 3 and group in rel:
-                s_ += RELEASE_GROUP_BONUS
-            return s_
 
-        minutes = _duration_min(video)
-        ignore: list[str] = []
+def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: Log,
+         cancel: threading.Event, tr: Tr = _tr_fallback) -> Scan:
+    """Vorlauf: Videos finden, erkennen, bei den Providern suchen, bewerten. Kein Download, kein Sync."""
+    sc = Scan(folder=folder, languages=list(languages))
+    try:
+        from subliminal import ProviderPool
+        _region_setup()
+        progress(tr("c_scan"), 0, 0)
+        videos = find_videos(folder, int(cfg.get("min_size_mb", 50)))
+        if not videos:
+            sc.error = tr("c_none")
+            return sc
+        writable: dict[Path, bool] = {}
+        for v in videos:
+            d = v.parent
+            if d not in writable:
+                writable[d] = can_write(d)
+                if not writable[d]:
+                    sc.noaccess.append(str(d))
+                    log(tr("c_no_write", folder=d.name or str(d)))
+        for v in videos:
+            if not writable[v.parent]:
+                continue
+            langs = [l for l in languages if not has_sub(v, l)]
+            it = Item(video=v, langs=langs)
+            for l in languages:
+                if l not in langs:
+                    it.status[l] = "present"
+            sc.items.append(it)
+        todo = [it for it in sc.items if it.langs]
+        log(tr("c_found", v=len(videos), t=len(todo), langs=", ".join(languages)))
+        if not todo:
+            return sc
+        providers, provider_configs = _providers(cfg, log, tr)
+        with ProviderPool(providers=providers, provider_configs=provider_configs) as pool:
+            for i, it in enumerate(todo, 1):
+                if cancel.is_set():
+                    sc.cancelled = True
+                    break
+                progress(it.video.name, i, len(todo))
+                _search_item(pool, it, log, tr)
+                hits = [l for l in it.langs if it.found.get(l)]
+                log(tr("c_scan_item", name=it.video.name, rec=it.recognized or "?",
+                       hits=", ".join(hits) if hits else "—"))
+    except Exception as e:  # noqa: BLE001
+        sc.error = f"{type(e).__name__}: {e}"
+    return sc
+
+
+def rescan(items: list, imdb_id: str, cfg: dict, log: Log, cancel: threading.Event,
+           tr: Tr = _tr_fallback) -> None:
+    """Nachsuche mit manueller IMDb-ID für einzelne Items (aus der Tabelle)."""
+    from subliminal import ProviderPool
+    _region_setup()
+    providers, provider_configs = _providers(cfg, log, tr)
+    with ProviderPool(providers=providers, provider_configs=provider_configs) as pool:
+        for it in items:
+            if cancel.is_set():
+                break
+            log(tr("c_imdb_via", id=imdb_id, name=it.video.name))
+            _search_item(pool, it, log, tr, manual_id=imdb_id)
+            hits = [l for l in it.langs if it.found.get(l)]
+            log(tr("c_scan_item", name=it.video.name, rec=it.recognized or "?",
+                   hits=", ".join(hits) if hits else "—"))
+
+
+def _download_item(pool, it: Item, tmp: Path, log: Log, tr: Tr) -> dict:
+    """Beste Kandidaten laden (Qualitätsprüfung inklusive). Liefert lang → Datei."""
+    from babelfish import Language
+    from subliminal import save_subtitles
+
+    got: dict[str, Path] = {}
+    v = it.v
+    want = {Language.fromietf(l) for l in it.langs if it.found.get(l)}
+    if not want or v is None:
+        return got
+    score = _score_fn(v)
+    minutes = _duration_min(it.video)
+    ignore: list[str] = []
+    try:
         for _attempt in range(MAX_ATTEMPTS):
             if not want:
                 break
-            best = pool.download_best_subtitles(found, v, want, min_score=min_score,
+            best = pool.download_best_subtitles(it.candidates, v, want, min_score=it.min_score,
                                                 subtitle_categories="n,hi,fo", ignore_subtitles=ignore,
                                                 compute_score=score)
             if not best:
@@ -349,92 +487,93 @@ def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
                 _ensure_utf8(p)
                 got[s.language.alpha2] = p
                 want.discard(s.language)
-        sp(0.35)
     except Exception as e:  # noqa: BLE001
         log(tr("c_dl_err", err=f"{type(e).__name__}: {e}"))
+    return got
 
-    for lang in langs:
-        if cancel.is_set():
-            break
-        dl = got.get(lang)
-        if not dl or not dl.exists():
-            if imdb_id:
-                log(tr("c_imdb_none", name=video.name, lang=lang))
-            else:
-                log(tr("c_not_found", lang=lang))
-            res.missing.append(f"{video.name}  [{lang}]")
-            res.missing_items.append((str(video), lang))
-            continue
-        out = video.with_name(f"{video.stem}.{lang}{dl.suffix.lower()}")
-        log(tr("c_syncing"))
-        ok, suspect = _alass(video, dl, out, log, tr, subprog=lambda f: sp(0.4 + 0.58 * f))
-        if ok and suspect:
-            res.suspect.append(f"{video.name}  [{lang}]")
-            res.suspect_items.append((str(video), lang))
-        elif ok:
-            res.synced.append(f"{video.name}  [{lang}]")
-        else:
-            shutil.copyfile(dl, out)
-            res.unsynced.append(f"{video.name}  [{lang}]")
-            log(tr("c_sync_fail"))
-    sp(1.0)
+
+def run_scan(sc: Scan, cfg: dict, progress: Progress, log: Log, cancel: threading.Event,
+             tr: Tr = _tr_fallback, frac: Frac | None = None) -> Result:
+    """Phase 2: Download + Sync für alle Items mit Treffern. Items ohne Treffer werden als fehlend gezählt."""
+    from subliminal import ProviderPool
+    res = Result()
+    res.noaccess = list(sc.noaccess)
+    res.skipped = sc.skipped
+    try:
+        _region_setup()
+        todo = [it for it in sc.items if it.langs]
+        for it in todo:
+            for lang in it.langs:
+                if not it.found.get(lang):
+                    it.status[lang] = "missing"
+                    res.missing.append(f"{it.video.name}  [{lang}]")
+                    res.missing_items.append((str(it.video), lang))
+        work = sc.runnable
+        if not work:
+            return res
+        providers, provider_configs = _providers(cfg, log, tr)
+        tmp = Path(tempfile.mkdtemp(prefix="supersubber-"))
+        try:
+            with ProviderPool(providers=providers, provider_configs=provider_configs) as pool:
+                total = len(work)
+                for i, it in enumerate(work, 1):
+                    if cancel.is_set():
+                        res.cancelled = True
+                        break
+                    langs = [l for l in it.langs if it.found.get(l)]
+                    progress(it.video.name, i, total)
+                    log(f"[{i}/{total}] {it.video.name}  [{', '.join(langs)}]")
+                    sp = (lambda base: (lambda f: frac(min(1.0, (base + f) / total))))(i - 1) if frac else (lambda f: None)
+                    sp(0.05)
+                    got = _download_item(pool, it, tmp, log, tr)
+                    sp(0.35)
+                    for lang in langs:
+                        if cancel.is_set():
+                            break
+                        dl = got.get(lang)
+                        if not dl or not dl.exists():
+                            log(tr("c_not_found", lang=lang))
+                            it.status[lang] = "missing"
+                            res.missing.append(f"{it.video.name}  [{lang}]")
+                            res.missing_items.append((str(it.video), lang))
+                            continue
+                        out = it.video.with_name(f"{it.video.stem}.{lang}{dl.suffix.lower()}")
+                        log(tr("c_syncing"))
+                        ok, suspect = _alass(it.video, dl, out, log, tr, subprog=lambda f: sp(0.4 + 0.58 * f))
+                        if ok and suspect:
+                            it.status[lang] = "suspect"
+                            res.suspect.append(f"{it.video.name}  [{lang}]")
+                            res.suspect_items.append((str(it.video), lang))
+                        elif ok:
+                            it.status[lang] = "synced"
+                            res.synced.append(f"{it.video.name}  [{lang}]")
+                        else:
+                            shutil.copyfile(dl, out)
+                            it.status[lang] = "unsynced"
+                            res.unsynced.append(f"{it.video.name}  [{lang}]")
+                            log(tr("c_sync_fail"))
+                    sp(1.0)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    except Exception as e:  # noqa: BLE001
+        res.error = f"{type(e).__name__}: {e}"
+    return res
 
 
 def run(folder: str, languages: list[str], cfg: dict, progress: Progress, log: Log,
         cancel: threading.Event, tr: Tr = _tr_fallback, frac: Frac | None = None,
         imdb_id: str | None = None) -> Result:
-    res = Result()
-    try:
-        return _run(folder, languages, cfg, progress, log, cancel, tr, frac, imdb_id, res)
-    except Exception as e:  # noqa: BLE001 — alles in der GUI anzeigen statt stumm sterben
-        res.error = f"{type(e).__name__}: {e}"
+    """Kommandozeile/Headless: Vorlauf + Lauf in einem. imdb_id gilt für alle Videos."""
+    sc = scan(folder, languages, cfg, progress, log, cancel, tr)
+    if sc.error:
+        res = Result(); res.error = sc.error
         return res
-
-
-def _run(folder, languages, cfg, progress, log, cancel, tr, frac, imdb_id, res: Result) -> Result:
-    from subliminal import ProviderPool
-
-    _region_setup()
-    progress(tr("c_scan"), 0, 0)
-    videos = find_videos(folder, int(cfg.get("min_size_mb", 50)))
-    if not videos:
-        res.error = tr("c_none")
+    if imdb_id:
+        rescan([it for it in sc.items if it.langs], imdb_id, cfg, log, cancel, tr)
+    if sc.cancelled:
+        res = Result(); res.cancelled = True
         return res
-
-    # Schreibrechte je Ordner prüfen — ohne Schreibrecht kann kein Sub abgelegt werden
-    writable: dict[Path, bool] = {}
-    for v in videos:
-        d = v.parent
-        if d not in writable:
-            writable[d] = can_write(d)
-            if not writable[d]:
-                res.noaccess.append(str(d))
-                log(tr("c_no_write", folder=d.name or str(d)))
-
-    todo = [(v, [l for l in languages if not has_sub(v, l)]) for v in videos if writable[v.parent]]
-    todo = [(v, ls) for v, ls in todo if ls]
-    res.skipped = sum(writable[v.parent] for v in videos) - len(todo)
-    log(tr("c_found", v=len(videos), t=len(todo), langs=", ".join(languages)))
-    if not todo:
-        return res
-
-    providers, provider_configs = _providers(cfg, log, tr)
-    tmp = Path(tempfile.mkdtemp(prefix="supersubber-"))
-    try:
-        with ProviderPool(providers=providers, provider_configs=provider_configs) as pool:
-            total = len(todo)
-            for i, (video, langs) in enumerate(todo, 1):
-                if cancel.is_set():
-                    res.cancelled = True
-                    break
-                progress(f"{video.name}", i, total)
-                log(f"[{i}/{total}] {video.name}  [{', '.join(langs)}]")
-                sp = (lambda base: (lambda f: frac(min(1.0, (base + f) / total))))(i - 1) if frac else None
-                _process_video(pool, video, langs, tmp, res, log, tr, cancel,
-                               imdb_id=imdb_id, subprog=sp)
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-    return res
+    return run_scan(sc, cfg, progress, log, cancel, tr, frac)
 
 
 def run_local(video_path: str, sub_path: str, lang: str, cfg: dict, progress: Progress, log: Log,
@@ -490,35 +629,6 @@ def run_local(video_path: str, sub_path: str, lang: str, cfg: dict, progress: Pr
         finally:
             if tmpdir:
                 shutil.rmtree(tmpdir, ignore_errors=True)
-    except Exception as e:  # noqa: BLE001
-        res.error = f"{type(e).__name__}: {e}"
-    return res
-
-
-def run_imdb(entries: list[tuple[str, list[str], str]], cfg: dict, progress: Progress, log: Log,
-             cancel: threading.Event, tr: Tr = _tr_fallback, frac: Frac | None = None) -> Result:
-    """Nachsuche per IMDb-ID: entries = [(Videopfad, Sprachen, tt-ID), …]."""
-    res = Result()
-    try:
-        from subliminal import ProviderPool
-        _region_setup()
-        providers, provider_configs = _providers(cfg, log, tr)
-        tmp = Path(tempfile.mkdtemp(prefix="supersubber-"))
-        try:
-            with ProviderPool(providers=providers, provider_configs=provider_configs) as pool:
-                total = len(entries)
-                for i, (path, langs, ttid) in enumerate(entries, 1):
-                    if cancel.is_set():
-                        res.cancelled = True
-                        break
-                    video = Path(path)
-                    progress(f"{video.name}", i, total)
-                    log(tr("c_imdb_via", id=ttid, name=video.name))
-                    sp = (lambda base: (lambda f: frac(min(1.0, (base + f) / total))))(i - 1) if frac else None
-                    _process_video(pool, video, langs, tmp, res, log, tr, cancel,
-                                   imdb_id=ttid, subprog=sp)
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
     except Exception as e:  # noqa: BLE001
         res.error = f"{type(e).__name__}: {e}"
     return res

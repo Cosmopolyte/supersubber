@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0 — 2026-09-22
+- New pre-run table: dropping or choosing a folder immediately searches the providers and lists every video with what was recognized and whether subtitles were found per language — before anything is downloaded. Start becomes active once the search is done.
+- IMDb IDs are entered per row in that table, for selected rows or for all rows without hits, and the rows are searched again right away. The global IMDb field and the post-run dialog are gone.
+- English UI says "TV show" instead of "series".
+
 ## 1.0.1 — 2026-09-22
 - Display name is now SuperSubber (title bar, dialogs, docs); file, package and config names stay lowercase.
 

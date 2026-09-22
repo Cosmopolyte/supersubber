@@ -6,13 +6,13 @@
 + Behebt Framerate-Drift wie 23,976 zu 25 fps, konstante Offsets und Werbeschnitt-Sprünge
 + Ergebnis liegt als `<Video>.<lang>.srt` neben dem Video — Kodi & Co. laden es automatisch
 
-<p align="center"><img src="assets/screenshot-main.png" alt="Hauptfenster nach einem Lauf" width="560"></p>
+<p align="center"><img src="assets/screenshot-main.png" alt="Hauptfenster nach einem Lauf" width="640"></p>
 
 ## Benutzung
 
 1. Release-Zip herunterladen, irgendwohin entpacken, `supersubber.exe` starten — portabel, keine Installation.
-2. Video oder Ordner hineinziehen oder wählen, Untertitel-Sprachen anhaken, **Start**.
-3. Fortschritt pro Episode im Fenster; am Ende eine Zusammenfassung. Videos, die schon Untertitel in der Sprache haben, werden übersprungen — mehrfaches Ausführen ist unkritisch.
+2. Video oder Ordner hineinziehen oder wählen. SuperSubber sucht sofort bei den Providern und listet jedes Video in einer Tabelle: als was es erkannt wurde und ob je Sprache Untertitel gefunden wurden. Geladen wird noch nichts.
+3. **Start** drücken, sobald die Suche fertig ist. Fortschritt pro Video im Fenster; am Ende eine Zusammenfassung. Videos, die schon Untertitel in der Sprache haben, werden übersprungen — mehrfaches Ausführen ist unkritisch.
 4. Kommandozeile: `supersubber.exe <Ordner> [--lang ru,de]` startet direkt mit diesem Ordner.
 
 Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar. Das Sprachen-Dropdown startet mit den zehn häufigsten Sprachen — der Button „Sprachen…" öffnet eine durchsuchbare Liste mit ~40 weiteren, angezeigt in ihrer Eigenschreibweise.
@@ -21,7 +21,7 @@ Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar. Das Sprachen
 
 **NFO-Dateien:** Liegt neben dem Video eine `.nfo` mit IMDb-Link, sucht SuperSubber sofort über diese ID — Originaltitel, Jahr oder Schreibweise im Dateinamen spielen dann keine Rolle mehr.
 
-**IMDb-Nachsuche:** Wird ein Video nicht erkannt, erscheint nach dem Lauf der Button „IMDb-ID angeben…" — IMDb-ID oder -Link eintragen und erneut suchen lassen. Bei Serien die ID der Serie.
+**IMDb-Suche:** Zeigt die Tabelle für ein Video keine Treffer, die Zeile markieren, IMDb-ID oder -Link in das Feld unter der Tabelle einfügen und **Übernehmen** klicken — die Zeile wird sofort neu gesucht. Bei Serien die ID der Serie und **Für alle ohne Treffer**, dann bekommen alle Folgen sie auf einmal.
 
 **„Kein Untertitel gefunden":** Die Erkennung läuft über den kompletten Pfad plus OpenSubtitles-Datei-Hash. Serien brauchen den Original-Serientitel irgendwo im Pfad und `SxxExx` im Dateinamen — der Ordnername reicht, z. B. `The.Expanse\S02\S02E05.Home.mp4`, und die Sprache des Episodentitels ist egal. Filme: Originaltitel + Jahr im Dateinamen. Es wird nicht geraten.
 
