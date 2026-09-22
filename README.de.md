@@ -1,9 +1,9 @@
 # SuperSubber — Untertitel automatisch laden & synchronisieren
 
 + Open Source, portables Windows-Tool
-+ Lädt automatisch fehlende Untertitel für alle Videos in einem Ordner (rekursiv)
++ Lädt automatisch fehlende Untertitel für alle Videos in einem Ordner
 + Synchronisiert die Untertitel gegen die Tonspur des Videos
-+ Behebt Framerate-Drift (23,976 ↔ 25 fps), konstante Offsets und Werbeschnitt-Sprünge
++ Behebt Framerate-Drift wie 23,976 zu 25 fps, konstante Offsets und Werbeschnitt-Sprünge
 + Ergebnis liegt als `<Video>.<lang>.srt` neben dem Video — Kodi & Co. laden es automatisch
 
 <p align="center"><img src="assets/screenshot-main.png" alt="Hauptfenster nach einem Lauf" width="560"></p>
@@ -11,32 +11,32 @@
 ## Benutzung
 
 1. Release-Zip herunterladen, irgendwohin entpacken, `supersubber.exe` starten — portabel, keine Installation.
-2. Video oder Ordner hineinziehen (oder wählen), Untertitel-Sprachen anhaken, **Start**.
+2. Video oder Ordner hineinziehen oder wählen, Untertitel-Sprachen anhaken, **Start**.
 3. Fortschritt pro Episode im Fenster; am Ende eine Zusammenfassung. Videos, die schon Untertitel in der Sprache haben, werden übersprungen — mehrfaches Ausführen ist unkritisch.
 4. Kommandozeile: `supersubber.exe <Ordner> [--lang ru,de]` startet direkt mit diesem Ordner.
 
-Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar (⚙ → App-Sprache; beim ersten Start wird die Windows-Anzeigesprache übernommen). Das Sprachen-Dropdown startet mit den zehn häufigsten Sprachen — der Button „Sprachen…" öffnet eine durchsuchbare Liste mit ~40 weiteren, angezeigt in ihrer Eigenschreibweise.
+Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar. Das Sprachen-Dropdown startet mit den zehn häufigsten Sprachen — der Button „Sprachen…" öffnet eine durchsuchbare Liste mit ~40 weiteren, angezeigt in ihrer Eigenschreibweise.
 
-**Eigenes Untertitel-File syncen:** Ein `.srt`/`.ass` in die Drop-Zone ziehen (allein oder zusammen mit dem Video) — liegt genau ein Video im selben Ordner, wird es automatisch genommen, sonst fragt ein Dateidialog. Ein verdrängtes File wird einmalig als `*.orig` gesichert (diese Endung ignorieren Player).
+**Eigenes Untertitel-File syncen:** Ein `.srt` oder `.ass` in die Drop-Zone ziehen, allein oder zusammen mit dem Video. Liegt genau ein Video im selben Ordner, wird es automatisch genommen, sonst fragt ein Dateidialog. Ein verdrängtes File bleibt erhalten und bekommt die Endung `.orig`, die Player ignorieren.
 
-**NFO-Dateien:** Liegt neben dem Video eine `.nfo` mit IMDb-Link (Release-NFOs haben ihn fast immer, Kodi/Jellyfin-`movie.nfo`/`tvshow.nfo` ebenso), sucht SuperSubber sofort über diese ID — Originaltitel, Jahr oder Schreibweise im Dateinamen spielen dann keine Rolle mehr.
+**NFO-Dateien:** Liegt neben dem Video eine `.nfo` mit IMDb-Link, sucht SuperSubber sofort über diese ID — Originaltitel, Jahr oder Schreibweise im Dateinamen spielen dann keine Rolle mehr.
 
-**IMDb-Nachsuche:** Wird ein Video nicht erkannt, erscheint nach dem Lauf der Button „IMDb-ID angeben…" — IMDb-ID oder -Link eintragen (bei Serien die ID der Serie) und erneut suchen lassen.
+**IMDb-Nachsuche:** Wird ein Video nicht erkannt, erscheint nach dem Lauf der Button „IMDb-ID angeben…" — IMDb-ID oder -Link eintragen und erneut suchen lassen. Bei Serien die ID der Serie.
 
-**„Kein Untertitel gefunden":** Die Erkennung läuft über den kompletten Pfad (guessit) plus OpenSubtitles-Datei-Hash. Serien: Original-Serientitel irgendwo im Pfad (Ordnername reicht, z. B. `The.Expanse\S02\S02E05.Home.mp4`) + `SxxExx` im Dateinamen — die Sprache des Episodentitels ist egal. Filme: Originaltitel + Jahr im Dateinamen. Es wird nicht geraten.
+**„Kein Untertitel gefunden":** Die Erkennung läuft über den kompletten Pfad plus OpenSubtitles-Datei-Hash. Serien brauchen den Original-Serientitel irgendwo im Pfad und `SxxExx` im Dateinamen — der Ordnername reicht, z. B. `The.Expanse\S02\S02E05.Home.mp4`, und die Sprache des Episodentitels ist egal. Filme: Originaltitel + Jahr im Dateinamen. Es wird nicht geraten.
 
 ## Einstellungen
 
-Zusätzlich zu den freien Quellen (kein festes Tageskontingent) bringt ein optionaler, kostenloser OpenSubtitles.com-Login 20 Downloads pro Tag. Das Passwort wird per Windows DPAPI verschlüsselt in `%APPDATA%\supersubber\config.json` abgelegt.
+Die freien Quellen haben kein festes Tageskontingent; ein optionaler, kostenloser OpenSubtitles.com-Login bringt zusätzlich 20 Downloads pro Tag. Das Passwort wird per Windows DPAPI verschlüsselt in `%APPDATA%\supersubber\config.json` abgelegt.
 
 <p align="center"><img src="assets/screenshot-settings.png" alt="Einstellungen" width="380"></p>
 
 ## Hinweise
 
 - **Nur Windows.** Nutzt DPAPI und bündelt Windows-Binaries; andere Plattformen sind derzeit nicht geplant.
-- **SmartScreen-Warnung:** Die Exe ist nicht signiert (kostenloses Hobby-Tool). Windows warnt ggf. beim ersten Start — „Weitere Informationen" → „Trotzdem ausführen", oder aus dem Quellcode bauen.
+- **SmartScreen-Warnung:** Die Exe ist nicht signiert, das ist ein kostenloses Hobby-Tool. Windows warnt ggf. beim ersten Start — „Weitere Informationen" → „Trotzdem ausführen", oder aus dem Quellcode bauen.
 - **Provided as-is.** Keine Support-Zusagen; Issues und PRs sind willkommen, Antworten können dauern.
-- **Unter der Haube:** die Open-Source-Tools [subliminal](https://github.com/Diaoul/subliminal) (Suche & Download von mehreren Providern) + [alass](https://github.com/kaegi/alass) (Sync per Sprachaktivitäts-Analyse). Siehe `THIRD-PARTY.md`.
+- **Unter der Haube:** [subliminal](https://github.com/Diaoul/subliminal) sucht und lädt von mehreren Providern, [alass](https://github.com/kaegi/alass) synchronisiert per Sprachaktivitäts-Analyse. Siehe `THIRD-PARTY.md`.
 
 ## Aus dem Quellcode bauen
 
