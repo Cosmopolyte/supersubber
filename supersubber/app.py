@@ -13,7 +13,7 @@ import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import config, core, i18n
+from . import __version__, config, core, i18n
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -152,7 +152,7 @@ class App(_Root):
     def _build(self):
         for w in self.winfo_children():
             w.destroy()
-        self.title("supersubber — Find & Sync Subtitles")
+        self.title(f"supersubber {__version__} — Find & Sync Subtitles")
 
         # Zahnrad in eigener Zeile ganz oben rechts (auf dem Hintergrund)
         gearrow = ttk.Frame(self, style="Bg.TFrame"); gearrow.pack(fill="x", padx=10, pady=(8, 6))
@@ -627,6 +627,10 @@ class App(_Root):
         b = ttk.Frame(outer, style="Bg.TFrame"); b.pack(pady=(2, 0))
         ttk.Button(b, text=self.t("st_save"), command=ok, style="Accent.TButton").pack(side="left", padx=4)
         ttk.Button(b, text=self.t("st_cancel"), command=win.destroy).pack(side="left", padx=4)
+        foot = tk.Label(outer, text=f"supersubber {__version__}  ·  github.com/Cosmopolyte/supersubber",
+                        bg=BG, fg=GREY, cursor="hand2", font=("Segoe UI", 8))
+        foot.pack(pady=(10, 0))
+        foot.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/Cosmopolyte/supersubber"))
 
     # ---- Log ----------------------------------------------------------------
     def _log(self, s: str):

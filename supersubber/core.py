@@ -20,6 +20,7 @@ BASE_PROVIDERS = ["podnapisi", "gestdown", "tvsubtitles", "bsplayer", "opensubti
 
 MIN_CUES_PER_MIN = 3     # darunter gilt ein Sub als Forced/unvollständig (Serien liegen bei 10–15/min)
 MAX_ATTEMPTS = 3         # Kandidaten pro Sprache, bevor aufgegeben wird
+RELEASE_GROUP_BONUS = 40 # Sub-Release-Name enthält die Release-Gruppe des Videos (< Jahr-Gewicht 54)
 
 Progress = Callable[[str, int, int], None]   # (Meldung, aktuell, gesamt)
 Log = Callable[[str], None]
@@ -283,7 +284,7 @@ def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
                    subprog: Callable[[float], None] | None = None):
     from babelfish import Language
     from subliminal import refine, save_subtitles, scan_video
-    from subliminal.score import episode_scores, movie_scores
+    from subliminal.score import compute_score, episode_scores, movie_scores
     from subliminal.video import Episode
 
     sp = subprog or (lambda f: None)
@@ -312,13 +313,26 @@ def _process_video(pool, video: Path, langs: list[str], tmp: Path, res: Result,
             min_score = episode_scores["series"] + episode_scores["season"] + episode_scores["episode"]
         else:
             min_score = movie_scores["title"] + (movie_scores["year"] if getattr(v, "year", None) else 0)
+        # Release-Gruppe des Rips (…-SHORTBREHD) im Sub-Release-Namen → Bonus: ein Sub derselben
+        # Gruppe ist garantiert für exakt diesen Schnitt getimt. Bonus bleibt unter dem Jahr-Gewicht,
+        # kann also keinen Kandidaten mit falschem Jahr über die Schwelle heben.
+        group = (getattr(v, "release_group", None) or "").lower()
+
+        def score(sub, vid, **kw):
+            s_ = compute_score(sub, vid, **kw)
+            rel = str(getattr(sub, "release", None) or getattr(sub, "info", None) or "").lower()
+            if group and len(group) >= 3 and group in rel:
+                s_ += RELEASE_GROUP_BONUS
+            return s_
+
         minutes = _duration_min(video)
         ignore: list[str] = []
         for _attempt in range(MAX_ATTEMPTS):
             if not want:
                 break
             best = pool.download_best_subtitles(found, v, want, min_score=min_score,
-                                                subtitle_categories="n,hi,fo", ignore_subtitles=ignore)
+                                                subtitle_categories="n,hi,fo", ignore_subtitles=ignore,
+                                                compute_score=score)
             if not best:
                 break
             for s in save_subtitles(v, best, directory=str(tmp)):
