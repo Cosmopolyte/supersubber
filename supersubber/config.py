@@ -18,6 +18,7 @@ DEFAULTS = {
     "opensubtitles_password": "",        # DPAPI-verschlüsselt, base64
     "min_size_mb": 50,
     "ui_language": "en",                 # Default Englisch; beim ersten Start Systemsprache erkannt
+    "window": "",                        # letzte Fenstergeometrie „WxH+X+Y" (leer = nach Bildschirm berechnet)
 }
 
 # Windows-Primary-LANGID → ISO-Kürzel, nur für die Default-known_languages relevant

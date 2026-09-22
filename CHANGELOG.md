@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 — 2026-09-22
+- Table: one column per language with the language names in the app language, visible column separators, striped rows, tooltips for truncated cells.
+- IMDb ID is set per row by clicking its IMDb cell; for episodes the same ID can be applied to all episodes of that show in one go. The field and buttons below the table are gone.
+- Start button moved below the table, in reading order: folder, table, Start, progress.
+- Log is kept across runs with separator lines, ends with a colored per-video result block, and can be saved. The large result line above the log is gone; the short summary sits in the status line.
+- Window opens at a size derived from the screen and remembers its last size and position.
+- Disabled Start button is greyed instead of showing grey text.
+- NFO lookup: a foreign NFO is only used when the video is alone in its folder.
+
 ## 1.1.0 — 2026-09-22
 - New pre-run table: dropping or choosing a folder immediately searches the providers and lists every video with what was recognized and whether subtitles were found per language — before anything is downloaded. Start becomes active once the search is done.
 - IMDb IDs are entered per row in that table, for selected rows or for all rows without hits, and the rows are searched again right away. The global IMDb field and the post-run dialog are gone.

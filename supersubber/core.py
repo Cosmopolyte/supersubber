@@ -247,7 +247,14 @@ def _imdb_from_nfo(video: Path, episode: bool) -> str | None:
         cands = [video.parent / "tvshow.nfo", video.parent.parent / "tvshow.nfo"]
     else:
         same = video.with_suffix(".nfo")
-        cands = [same] + sorted(p for p in video.parent.glob("*.nfo") if p != same)
+        cands = [same]
+        # andere NFOs nur, wenn das Video allein im Ordner liegt — sonst bekäme jeder Film die ID des Nachbarn
+        try:
+            alone = sum(1 for p in video.parent.iterdir() if p.suffix.lower() in VIDEO_EXT) == 1
+        except OSError:
+            alone = False
+        if alone:
+            cands += sorted(p for p in video.parent.glob("*.nfo") if p != same)
     for nfo in cands:
         try:
             if not nfo.is_file() or nfo.stat().st_size > 512_000:

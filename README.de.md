@@ -21,7 +21,7 @@ Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar. Das Sprachen
 
 **NFO-Dateien:** Liegt neben dem Video eine `.nfo` mit IMDb-Link, sucht SuperSubber sofort über diese ID — Originaltitel, Jahr oder Schreibweise im Dateinamen spielen dann keine Rolle mehr.
 
-**IMDb-Suche:** Zeigt die Tabelle für ein Video keine Treffer, die Zeile markieren, IMDb-ID oder -Link in das Feld unter der Tabelle einfügen und **Übernehmen** klicken — die Zeile wird sofort neu gesucht. Bei Serien die ID der Serie und **Für alle ohne Treffer**, dann bekommen alle Folgen sie auf einmal.
+**IMDb-Suche:** Zeigt die Tabelle für ein Video keine Treffer oder ist die Erkennung falsch, auf die **IMDb**-Zelle der Zeile klicken und IMDb-ID oder -Link einfügen — die Zeile wird sofort neu gesucht. Bei einer Folge lässt sich die Serien-ID in einem Schritt auf alle Folgen dieser Serie übernehmen.
 
 **„Kein Untertitel gefunden":** Die Erkennung läuft über den kompletten Pfad plus OpenSubtitles-Datei-Hash. Serien brauchen den Original-Serientitel irgendwo im Pfad und `SxxExx` im Dateinamen — der Ordnername reicht, z. B. `The.Expanse\S02\S02E05.Home.mp4`, und die Sprache des Episodentitels ist egal. Filme: Originaltitel + Jahr im Dateinamen. Es wird nicht geraten.
 

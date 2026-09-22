@@ -91,13 +91,21 @@ class CanvasBar(tk.Canvas):
 class App(_Root):
     def __init__(self, folder: str | None = None, langs: list[str] | None = None):
         super().__init__()
-        self.geometry("680x800")
-        self.minsize(620, 680)
+        self.cfg = config.load()
+        # Fenstergröße: zuletzt gemerkte, sonst nach Bildschirm (etwa 60 % × 80 %, zentriert)
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        geo = str(self.cfg.get("window") or "")
+        m = re.fullmatch(r"(\d+)x(\d+)\+(-?\d+)\+(-?\d+)", geo)
+        if not m or int(m.group(3)) > sw - 200 or int(m.group(4)) > sh - 200:
+            w, h = min(int(sw * 0.62), 1180), min(int(sh * 0.82), 1050)
+            geo = f"{w}x{h}+{(sw - w) // 2}+{max(0, (sh - h) // 2 - 20)}"
+        self.geometry(geo)
+        self.minsize(640, 700)
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
         try:
             self.iconbitmap(default=str(asset("icon.ico")))
         except tk.TclError:
             pass
-        self.cfg = config.load()
         if langs:
             for l in langs:
                 if l not in self.cfg["known_languages"]:
@@ -111,10 +119,21 @@ class App(_Root):
         self.scan: core.Scan | None = None      # Ergebnis des Vorlaufs (Tabelle)
         self._scan_gen = 0                       # verwirft veraltete Vorlauf-Ergebnisse
         self._auto_run = bool(folder)            # Kommandozeile: nach dem Vorlauf sofort starten
+        self._table_langs: list[str] = []
+        self._tip: tk.Toplevel | None = None
+        self._tip_cell = None
         self._style()
         self._build()
         if folder:
             self.after(200, self._trigger_scan)
+
+    def _on_close(self):
+        try:
+            self.cfg["window"] = self.geometry()
+            config.save(self.cfg)
+        except Exception:  # noqa: BLE001
+            pass
+        self.destroy()
 
     @property
     def ui(self) -> str:
@@ -139,7 +158,8 @@ class App(_Root):
         s.configure("Gear.TButton", padding=(5, 4))
         s.configure("Accent.TButton", background=TEAL, foreground="white", bordercolor=TEAL_DARK,
                     font=("Segoe UI", 10, "bold"), padding=(10, 2))
-        s.map("Accent.TButton", background=[("active", TEAL_DARK), ("pressed", TEAL_DARK)])
+        s.map("Accent.TButton", background=[("disabled", "#6f8f86"), ("active", TEAL_DARK), ("pressed", TEAL_DARK)],
+              foreground=[("disabled", "#d3ddd9")])
         s.configure("TMenubutton", background="white", foreground=INK, bordercolor=CARD_EDGE,
                     arrowcolor=TEAL_DARK, padding=(10, 2))
         s.configure("TEntry", fieldbackground="white", foreground=INK, bordercolor=CARD_EDGE, padding=(4, 2))
@@ -153,7 +173,7 @@ class App(_Root):
         s.configure("Treeview", background="white", fieldbackground="white", foreground=INK,
                     rowheight=22, font=("Segoe UI", 9), bordercolor=CARD_EDGE)
         s.configure("Treeview.Heading", background="#e8e8e8", foreground=INK, font=("Segoe UI", 9, "bold"),
-                    relief="flat")
+                    relief="solid", borderwidth=1, bordercolor="#b3bfbb", padding=(6, 3))
         s.map("Treeview", background=[("selected", TEAL)], foreground=[("selected", "white")])
 
     # ---- Aufbau -------------------------------------------------------------
@@ -200,38 +220,31 @@ class App(_Root):
         ttk.Button(row, text=self.t("btn_langs"), style="Square.TButton",
                    command=self.lang_picker).pack(side="left", padx=(6, 0))
         self._build_lang_menu()
-        self.start_btn = ttk.Button(row, text=self.t("start"), command=self.start, width=12, style="Accent.TButton")
-        self.start_btn.pack(side="right")
-        self.start_btn.state(["disabled"])       # erst nach dem Vorlauf
 
-        # ---- Karte 2: Vorlauf-Tabelle — ein Video pro Zeile, IMDb-ID für markierte Zeilen
+        # ---- Karte 2: Vorlauf-Tabelle — Datei · Erkannt als · eine Spalte je Sprache · IMDb; Start darunter
         tcard = tk.Frame(self, bg=CARD)
         tcard.pack(fill="x", padx=10, pady=(14, 0))
         tf = ttk.Frame(tcard); tf.pack(fill="x", padx=10, pady=(10, 6))
-        self.table = ttk.Treeview(tf, columns=("file", "rec", "subs"), show="headings", height=7,
-                                  selectmode="extended")
-        for col, key, w, stretch in (("file", "col_file", 220, True), ("rec", "col_rec", 150, True),
-                                     ("subs", "col_subs", 250, False)):
-            self.table.heading(col, text=self.t(key), anchor="w")
-            self.table.column(col, width=w, minwidth=80, stretch=stretch, anchor="w")
+        self.table = ttk.Treeview(tf, columns=("file",), show="headings", height=8, selectmode="browse")
         self.table.tag_configure("none", foreground="#8a3b2a")
         self.table.tag_configure("present", foreground="#7c8a86")
         self.table.tag_configure("ok", foreground=INK)
+        self.table.tag_configure("odd", background="#eef2f0")
+        self.table.tag_configure("even", background="white")
+        self.table.bind("<Button-1>", self._on_table_click)
+        self.table.bind("<Motion>", self._on_table_motion)
+        self.table.bind("<Leave>", self._tip_hide)
         tsb = ttk.Scrollbar(tf, orient="vertical", command=self.table.yview)
         self.table.configure(yscrollcommand=tsb.set)
         tsb.pack(side="right", fill="y")
         self.table.pack(side="left", fill="x", expand=True)
-        irow = ttk.Frame(tcard); irow.pack(fill="x", padx=10, pady=(0, 10))
-        ttk.Label(irow, text=self.t("imdb_for_sel")).pack(side="left")
-        self.imdb_var = tk.StringVar()
-        ie = ttk.Entry(irow, textvariable=self.imdb_var, width=20)
-        ie.pack(side="left", padx=6)
-        ie.bind("<Return>", lambda e: self.apply_imdb())
-        ttk.Button(irow, text=self.t("apply"), style="Square.TButton", command=self.apply_imdb).pack(side="left")
-        ttk.Button(irow, text=self.t("apply_all"), style="Square.TButton",
-                   command=lambda: self.apply_imdb(all_missing=True)).pack(side="left", padx=(6, 0))
         self._row_items: dict[str, core.Item] = {}
-
+        self._table_langs = []
+        self._setup_columns([c for c, v in self.lang_sel.items() if v.get()])
+        foot = ttk.Frame(tcard); foot.pack(fill="x", padx=10, pady=(0, 10))
+        self.start_btn = ttk.Button(foot, text=self.t("start"), command=self.start, width=12, style="Accent.TButton")
+        self.start_btn.pack(side="right")
+        self.start_btn.state(["disabled"])       # erst nach dem Vorlauf
         # ---- Karte 3: Balken, Statuszeile, Ergebnis, Log (ohne Titel)
         sec = tk.Frame(self, bg=CARD)
         sec.pack(fill="both", expand=True, padx=10, pady=(14, 20))
@@ -244,9 +257,7 @@ class App(_Root):
         self.spinner.pack(side="left")
         self.status = ttk.Label(srow, text="")
         self.status.pack(side="left", fill="x")
-
-        self.result = tk.Label(sec, text="", font=("Segoe UI", 13, "bold"), bg=CARD, fg="white")
-        # wird nur mit Inhalt eingeblendet (sonst unnötiger Leerraum)
+        ttk.Button(srow, text=self.t("save_log"), style="Square.TButton", command=self.save_log).pack(side="right")
 
         self._logf = ttk.Frame(sec)
         self._logf.pack(fill="both", expand=True, padx=10, pady=(4, 10))
@@ -258,15 +269,14 @@ class App(_Root):
         self.log.tag_configure("head", font=("Consolas", 9, "bold"), spacing1=7)
         self.log.tag_configure("sub", lmargin1=20, lmargin2=20)
         self.log.tag_configure("warn", foreground="#7a5c00")
+        self.log.tag_configure("ok", foreground="#1e7a45")
+        self.log.tag_configure("fail", foreground="#a83a2a")
+        self.log.tag_configure("sep", foreground="#8a9a95")
         sb.pack(side="right", fill="y")
         self.log.pack(side="left", fill="both", expand=True)
 
-    def _set_result(self, text: str, fg: str):
-        if text:
-            self.result.config(text=text, fg=fg)
-            self.result.pack(fill="x", padx=10, pady=(4, 0), before=self._logf)
-        else:
-            self.result.pack_forget()
+    def _set_result(self, text: str, fg: str = ""):
+        self.status.config(text=text)
 
     def _draw_drop(self, _event=None):
         c = self.drop
@@ -389,11 +399,12 @@ class App(_Root):
         self._scan_gen += 1
         gen = self._scan_gen
         self.scan = None
+        self._setup_columns(langs)
         self.table.delete(*self.table.get_children())
         self._row_items = {}
         self.start_btn.state(["disabled"])
         self.cancel.clear()
-        self._log_clear()
+        self._log_sep(folder)
         self.status.config(text=self.t("scanning"))
         ui = self.ui
 
@@ -416,7 +427,8 @@ class App(_Root):
         self.scan = sc
         if sc.error:
             self.bar.idle(self.t("error"))
-            self._set_result(f"✖  {sc.error}", ERR_LIGHT); self.status.config(text=""); return
+            self._log_raw("✖  " + sc.error, ("fail",))
+            self.status.config(text=self.t("error")); return
         self._fill_table()
         n = len(sc.items)
         f = len(sc.runnable)
@@ -430,62 +442,130 @@ class App(_Root):
             if f:
                 self.start()
 
-    def _row_text(self, it: core.Item) -> tuple[str, str]:
-        parts = []
-        for lang in (self.scan.languages if self.scan else it.status):
-            st = it.status.get(lang)
-            if not st:
-                continue
-            sym = {"present": "✔", "found": "✔", "synced": "✔", "suspect": "⚠", "unsynced": "⚠",
-                   "none": "✖", "missing": "✖"}.get(st, "")
-            parts.append(f"{lang} {sym} {self.t('s_' + st)}")
+    # ---- Tabelle -------------------------------------------------------------
+    _SYM = {"present": "✔", "found": "✔", "synced": "✔", "suspect": "⚠", "unsynced": "⚠",
+            "none": "✖", "missing": "✖"}
+
+    def _setup_columns(self, langs: list[str]):
+        """Spalten neu aufbauen, wenn sich die Sprachauswahl geändert hat."""
+        if langs == self._table_langs and len(self.table["columns"]) > 1:
+            return
+        self._table_langs = list(langs)
+        cols = ["file", "rec"] + [f"l_{l}" for l in langs] + ["imdb"]
+        self.table.configure(columns=cols)
+        self.table.heading("file", text=self.t("col_file"), anchor="w")
+        self.table.column("file", width=220, minwidth=80, stretch=True, anchor="w")
+        self.table.heading("rec", text=self.t("col_rec"), anchor="w")
+        self.table.column("rec", width=170, minwidth=80, stretch=True, anchor="w")
+        for l in langs:
+            self.table.heading(f"l_{l}", text=i18n.lang_name_ui(self.ui, l), anchor="w")
+            self.table.column(f"l_{l}", width=115, minwidth=70, stretch=False, anchor="w")
+        self.table.heading("imdb", text=self.t("col_imdb"), anchor="w")
+        self.table.column("imdb", width=100, minwidth=70, stretch=False, anchor="w")
+
+    def _row_values(self, it: core.Item) -> tuple[list, str]:
+        vals = [it.video.name, it.recognized or ("—" if it.langs else "")]
+        for l in self._table_langs:
+            st = it.status.get(l)
+            vals.append(f"{self._SYM.get(st, '')} {self.t('s_' + st)}" if st else "")
+        vals.append(it.imdb_id or (self.t("imdb_set") if it.langs else ""))
         if not it.langs:
             tag = "present"
-        elif any(it.status.get(l) in ("none", "missing") for l in it.langs) and \
-                not any(it.status.get(l) in ("found", "synced", "suspect", "unsynced") for l in it.langs):
+        elif not any(it.status.get(l) in ("found", "synced", "suspect", "unsynced") for l in it.langs):
             tag = "none"
         else:
             tag = "ok"
-        return "   ".join(parts), tag
+        return vals, tag
 
     def _fill_table(self):
         self.table.delete(*self.table.get_children())
         self._row_items = {}
         if not self.scan:
             return
-        for it in self.scan.items:
-            subs, tag = self._row_text(it)
-            rec = it.recognized or ("—" if it.langs else "")
-            if it.imdb_id:
-                rec += f"  [{it.imdb_id}]"
-            iid = self.table.insert("", "end", values=(it.video.name, rec, subs), tags=(tag,))
+        for i, it in enumerate(self.scan.items):
+            vals, tag = self._row_values(it)
+            iid = self.table.insert("", "end", values=vals, tags=(tag, "odd" if i % 2 else "even"))
             self._row_items[iid] = it
 
     def _refresh_rows(self, items: list):
         for iid, it in self._row_items.items():
             if it in items:
-                subs, tag = self._row_text(it)
-                rec = it.recognized or "—"
-                if it.imdb_id:
-                    rec += f"  [{it.imdb_id}]"
-                self.table.item(iid, values=(it.video.name, rec, subs), tags=(tag,))
+                vals, tag = self._row_values(it)
+                zebra = [t for t in self.table.item(iid, "tags") if t in ("odd", "even")]
+                self.table.item(iid, values=vals, tags=(tag, *zebra))
 
-    def apply_imdb(self, all_missing: bool = False):
-        """IMDb-ID auf markierte Zeilen anwenden und diese Zeilen nachsuchen."""
-        if not self.scan or (self.worker and self.worker.is_alive()):
+    def _on_table_click(self, event):
+        if self.table.identify("region", event.x, event.y) != "cell":
             return
-        raw = self.imdb_var.get().strip()
-        m = IMDB_RE.search(raw)
-        if not m:
-            messagebox.showwarning("SuperSubber", self.t("c_imdb_invalid", val=raw)); return
-        ttid = m.group(0)
-        if all_missing:
-            items = [it for it in self.scan.items if it.langs and not all(it.found.get(l) for l in it.langs)]
-        else:
-            items = [self._row_items[i] for i in self.table.selection() if i in self._row_items]
-            items = [it for it in items if it.langs]
-        if not items:
-            messagebox.showwarning("SuperSubber", self.t("warn_select")); return
+        col = self.table.column(self.table.identify_column(event.x), "id")
+        it = self._row_items.get(self.table.identify_row(event.y))
+        if col == "imdb" and it and it.langs and not (self.worker and self.worker.is_alive()):
+            self._imdb_popup(it)
+
+    def _on_table_motion(self, event):
+        """Abgeschnittene Zellinhalte als Tooltip zeigen."""
+        from tkinter import font as tkfont
+        iid, colid = self.table.identify_row(event.y), self.table.identify_column(event.x)
+        if (iid, colid) == self._tip_cell:
+            return
+        self._tip_hide()
+        self._tip_cell = (iid, colid)
+        if not iid or not colid or self.table.identify("region", event.x, event.y) != "cell":
+            return
+        text = str(self.table.set(iid, self.table.column(colid, "id")))
+        if not text or tkfont.Font(font=("Segoe UI", 9)).measure(text) + 12 <= int(self.table.column(colid, "width")):
+            return
+        self._tip = tk.Toplevel(self)
+        self._tip.wm_overrideredirect(True)
+        tk.Label(self._tip, text=text, bg="#fffbe6", fg=INK, relief="solid", borderwidth=1,
+                 font=("Segoe UI", 9), padx=6, pady=3).pack()
+        self._tip.wm_geometry(f"+{event.x_root + 14}+{event.y_root + 18}")
+
+    def _tip_hide(self, *_):
+        if self._tip is not None:
+            self._tip.destroy()
+            self._tip = None
+        self._tip_cell = None
+
+    def _imdb_popup(self, it: core.Item):
+        """IMDb-ID für genau diese Zeile; bei Serien optional für alle Folgen derselben Serie."""
+        win = tk.Toplevel(self); win.title("IMDb"); win.resizable(False, False); win.grab_set()
+        win.configure(bg=CARD)
+        try:
+            win.iconbitmap(str(asset("icon.ico")))
+        except tk.TclError:
+            pass
+        f = ttk.Frame(win, padding=14); f.pack(fill="both", expand=True)
+        ttk.Label(f, text=it.video.name, font=("Segoe UI", 9, "bold"), wraplength=400).pack(anchor="w")
+        ttk.Label(f, text=self.t("imdb_popup_hint"), wraplength=400).pack(anchor="w", pady=(4, 8))
+        var = tk.StringVar(value=it.imdb_id or "")
+        e = ttk.Entry(f, textvariable=var, width=46)
+        e.pack(anchor="w"); e.focus_set(); e.select_range(0, "end")
+        show = getattr(it.v, "series", None) if it.v is not None else None
+        siblings = [o for o in (self.scan.items if self.scan else []) if o is not it and o.langs
+                    and o.v is not None and getattr(o.v, "series", None) == show] if show else []
+        all_var = tk.BooleanVar(value=bool(siblings))
+        if siblings:
+            tk.Checkbutton(f, text=self.t("imdb_all_eps", n=len(siblings), show=show), variable=all_var,
+                           bg=CARD, fg=LIGHT, activebackground=CARD, activeforeground=LIGHT,
+                           selectcolor=CARD_EDGE, highlightthickness=0, wraplength=400,
+                           justify="left").pack(anchor="w", pady=(8, 0))
+
+        def ok(*_):
+            raw = var.get().strip()
+            m = IMDB_RE.search(raw)
+            if not m:
+                messagebox.showwarning("SuperSubber", self.t("c_imdb_invalid", val=raw), parent=win); return
+            items = [it] + (siblings if all_var.get() else [])
+            win.destroy()
+            self._rescan(items, m.group(0))
+
+        e.bind("<Return>", ok)
+        b = ttk.Frame(f); b.pack(pady=(12, 0))
+        ttk.Button(b, text=self.t("st_save"), command=ok, style="Accent.TButton").pack(side="left", padx=4)
+        ttk.Button(b, text=self.t("st_cancel"), command=win.destroy).pack(side="left", padx=4)
+
+    def _rescan(self, items: list, ttid: str):
         self.cancel.clear()
         ui = self.ui
 
@@ -552,7 +632,7 @@ class App(_Root):
             messagebox.showwarning("SuperSubber", self.t("warn_lang")); return
         self.folder_var.set(os.path.dirname(video))
         self.cancel.clear()
-        self._log_clear()
+        self._log_sep(os.path.basename(sub))
         ui = self.ui
 
         def work():
@@ -571,7 +651,6 @@ class App(_Root):
         self.start_btn.config(text=self.t("cancel_run") if on else self.t("start"))
         if on:
             self.start_btn.state(["!disabled"])   # als Abbrechen immer erreichbar
-            self._set_result("", "")
             self.after(100, self._poll)
             self.after(90, self._animate)
 
@@ -581,7 +660,7 @@ class App(_Root):
         if not self.scan or not self.scan.runnable:
             self._trigger_scan(); return
         self.cancel.clear()
-        self._log_clear()
+        self._log_sep(self.t("start"))
         self.worker = threading.Thread(target=self._work, daemon=True)
         self._busy(True)
         self.worker.start()
@@ -636,14 +715,14 @@ class App(_Root):
         self.spinner.config(text="")
         if res.error:
             self.bar.idle(self.t("error"))
-            self._set_result(f"✖  {res.error}", ERR_LIGHT); self.status.config(text=""); return
+            self._log_raw("✖  " + res.error, ("fail",))
+            self.status.config(text=self.t("error")); return
         self.bar.set(1.0, "100 %")
-        self.status.config(text=self.t("done"))
         if self.scan:
             self._refresh_rows(self.scan.items)
             self.start_btn.state(["disabled"])   # erledigt — neuer Lauf erst nach neuem Vorlauf
-        if not res.synced and not res.unsynced and not res.suspect and not res.missing and not res.noaccess and not res.cancelled:
-            self._set_result(self.t("res_all_have", n=res.skipped), OK_LIGHT)
+        if not any((res.synced, res.unsynced, res.suspect, res.missing, res.noaccess, res.cancelled)):
+            self.status.config(text=self.t("res_all_have", n=res.skipped))
             return
         parts = [self.t("p_synced", n=len(res.synced))]
         if res.skipped: parts.append(self.t("p_existing", n=res.skipped))
@@ -653,16 +732,28 @@ class App(_Root):
         if res.noaccess: parts.append(self.t("p_noaccess", n=len(res.noaccess)))
         ok = not res.missing and not res.unsynced and not res.suspect and not res.noaccess and not res.cancelled
         head = self.t("res_cancelled") if res.cancelled else self.t("res_done")
-        self._set_result(("✔  " if ok else "⚠  ") + head + ", ".join(parts), OK_LIGHT if ok else WARN_LIGHT)
+        self.status.config(text=("✔  " if ok else "⚠  ") + head + ", ".join(parts))
+        self._log_summary(res)
+
+    def _log_summary(self, res: core.Result):
+        """Abschluss-Block im Log: eine farbige Zeile je Video und Sprache, danach die Tipps."""
+        self._log_raw("\n" + self.t("sum_head"), ("head",))
+        for m in res.synced:
+            self._log_raw(f"  ✔ {m}  —  {self.t('s_synced')}", ("ok",))
+        for m in res.suspect:
+            self._log_raw(f"  ⚠ {m}  —  {self.t('s_suspect')}", ("warn",))
+        for m in res.unsynced:
+            self._log_raw(f"  ⚠ {m}  —  {self.t('s_unsynced')}", ("warn",))
+        for m in res.missing:
+            self._log_raw(f"  ✖ {m}  —  {self.t('s_missing')}", ("fail",))
+        for d in res.noaccess:
+            self._log_raw(f"  ✖ {d}  —  {self.t('p_noaccess', n='')}".replace("  —   ", "  —  "), ("fail",))
         if res.missing:
-            self._log(self.t("missing_hint"))
-            for m in res.missing: self._log("  " + m)
+            self._log_raw("  " + self.t("missing_hint"), ("sub",))
         if res.suspect:
-            self._log(self.t("suspect_hint"))
-            for m in res.suspect: self._log("  " + m)
+            self._log_raw("  " + self.t("suspect_hint"), ("warn",))
         if res.noaccess:
-            self._log(self.t("noaccess_hint"))
-            for d in res.noaccess: self._log("  " + d)
+            self._log_raw("  " + self.t("noaccess_hint"), ("sub",))
 
     # ---- Einstellungen ------------------------------------------------------
     def settings(self):
@@ -719,6 +810,23 @@ class App(_Root):
         foot.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/Cosmopolyte/supersubber"))
 
     # ---- Log ----------------------------------------------------------------
+    def _log_raw(self, s: str, tags: tuple[str, ...] = ()):
+        self.log.config(state="normal"); self.log.insert("end", s + "\n", tags); self.log.see("end"); self.log.config(state="disabled")
+
+    def _log_sep(self, title: str = ""):
+        """Trennlinie zwischen den Phasen — das Log wird nie automatisch geleert."""
+        if self.log.index("end-1c") != "1.0":
+            self._log_raw("\n" + "─" * 60 + (f"  {title}" if title else ""), ("sep",))
+
+    def save_log(self):
+        path = filedialog.asksaveasfilename(defaultextension=".txt", initialfile="supersubber-log.txt",
+                                            filetypes=[("Text", "*.txt"), ("All files", "*.*")])
+        if path:
+            try:
+                Path(path).write_text(self.log.get("1.0", "end-1c"), encoding="utf-8")
+            except OSError as e:
+                messagebox.showwarning("SuperSubber", str(e))
+
     def _log(self, s: str):
         tags: tuple[str, ...] = ()
         txt = s
