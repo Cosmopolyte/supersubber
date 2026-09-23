@@ -10,7 +10,7 @@
 
 ## Benutzung
 
-1. Release-Zip herunterladen, irgendwohin entpacken, `supersubber.exe` starten — portabel, keine Installation.
+1. Release-Zip herunterladen, irgendwohin entpacken, `supersubber.exe` starten — portabel, keine Installation. Mit Scoop: `scoop bucket add cosmopolyte https://github.com/Cosmopolyte/scoop-bucket` und `scoop install supersubber`.
 2. Video oder Ordner hineinziehen oder wählen. SuperSubber sucht sofort bei den Providern und listet jedes Video in einer Tabelle: als was es erkannt wurde und ob je Sprache Untertitel gefunden wurden. Geladen wird noch nichts.
 3. **Start** drücken, sobald die Suche fertig ist. Fortschritt pro Video im Fenster; am Ende eine Zusammenfassung. Videos, die schon Untertitel in der Sprache haben, werden übersprungen — mehrfaches Ausführen ist unkritisch.
 4. Kommandozeile: `supersubber.exe <Ordner> [--lang ru,de]` startet direkt mit diesem Ordner.

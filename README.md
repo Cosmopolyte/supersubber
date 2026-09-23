@@ -12,7 +12,7 @@
 
 ## Usage
 
-1. Download the latest release zip, unpack it anywhere, run `supersubber.exe` — portable, no installation.
+1. Download the latest release zip, unpack it anywhere, run `supersubber.exe` — portable, no installation. Scoop users: `scoop bucket add cosmopolyte https://github.com/Cosmopolyte/scoop-bucket` and `scoop install supersubber`.
 2. Drag a video or folder into the window or pick one. SuperSubber searches the providers right away and lists every video in a table: what it was recognized as, and whether subtitles were found for each language. Nothing is downloaded yet.
 3. Hit **Start** once the search is done. Watch the per-video progress; a summary appears at the end. Videos that already have subtitles in a language are skipped, so re-running is always safe.
 4. CLI usage: `supersubber.exe <folder> [--lang ru,de]` starts processing that folder right away.
