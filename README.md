@@ -1,7 +1,7 @@
 # SuperSubber — finds, downloads and syncs subtitles in bulk
 
 + Open source, portable Windows tool
-+ Works on whole folders at once — a movie, a season or an entire show
++ Works on single video files or whole folders at once — a movie, a season or an entire show
 + Automatically downloads missing subtitles for every video
 + Synchronizes subtitles against the audio track of the video
 + Fixes framerate drift such as 23.976 vs 25 fps, constant offsets and ad-break jumps

@@ -1,7 +1,7 @@
 # SuperSubber — findet, lädt und synchronisiert Untertitel im Stapel
 
 + Open Source, portables Windows-Tool
-+ Verarbeitet ganze Ordner auf einmal — ein Film, eine Staffel oder eine komplette Serie
++ Verarbeitet einzelne Videos oder ganze Ordner auf einmal — ein Film, eine Staffel oder eine komplette Serie
 + Lädt automatisch fehlende Untertitel für jedes Video
 + Synchronisiert die Untertitel gegen die Tonspur des Videos
 + Behebt Framerate-Drift wie 23,976 zu 25 fps, konstante Offsets und Werbeschnitt-Sprünge
