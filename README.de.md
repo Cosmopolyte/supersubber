@@ -1,7 +1,8 @@
-# SuperSubber — Untertitel automatisch laden & synchronisieren
+# SuperSubber — findet, lädt und synchronisiert Untertitel im Stapel
 
 + Open Source, portables Windows-Tool
-+ Lädt automatisch fehlende Untertitel für alle Videos in einem Ordner
++ Verarbeitet ganze Ordner auf einmal — ein Film, eine Staffel oder eine komplette Serie
++ Lädt automatisch fehlende Untertitel für jedes Video
 + Synchronisiert die Untertitel gegen die Tonspur des Videos
 + Behebt Framerate-Drift wie 23,976 zu 25 fps, konstante Offsets und Werbeschnitt-Sprünge
 + Ergebnis liegt als `<Video>.<lang>.srt` neben dem Video — Kodi & Co. laden es automatisch
