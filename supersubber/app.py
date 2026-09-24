@@ -12,6 +12,7 @@ import tkinter as tk
 import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+from tkinter import font as tkfont
 
 from . import __version__, config, core, i18n
 
@@ -35,11 +36,38 @@ SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 OPENSUBTITLES_URL = "https://www.opensubtitles.com"
 IMDB_RE = re.compile(r"tt\d{6,10}")
 LABEL_W = 19             # Label-Spalte: gemeinsame Startkante der Eingabe-Elemente
+WIN = sys.platform == "win32"
+UI_FONT = "Segoe UI" if WIN else "DejaVu Sans"   # Linux: wird in App.__init__ durch die Desktop-Schrift von Tk ersetzt
+LINK_ICON = "🔗 " if WIN else "↗ "                 # Tk 8.6 unter X11 hat für Emoji außerhalb der BMP meist keine Glyphe
+
+
+def _desktop_font() -> str:
+    """Schriftfamilie der GUI: Segoe UI auf Windows, sonst die Sans, die Tk für den Desktop gewählt hat."""
+    if WIN:
+        return "Segoe UI"
+    try:
+        return tkfont.nametofont("TkDefaultFont").actual("family") or "DejaVu Sans"
+    except tk.TclError:
+        return "DejaVu Sans"
 
 
 def asset(name: str) -> Path:
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     return base / "assets" / name
+
+
+def set_icon(win: tk.Misc, default: bool = False) -> None:
+    """Fenstersymbol: .ico auf Windows, sonst PNG per iconphoto — die Bildreferenz bleibt am Fenster hängen,
+    sonst räumt Tk sie weg."""
+    try:
+        if WIN:
+            win.iconbitmap(**({"default": str(asset("icon.ico"))} if default else {"bitmap": str(asset("icon.ico"))}))
+        else:
+            img = tk.PhotoImage(file=str(asset("icon_256.png")))
+            win.iconphoto(default, img)
+            win._icon_img = img  # type: ignore[attr-defined]
+    except tk.TclError:
+        pass
 
 
 class CanvasBar(tk.Canvas):
@@ -83,29 +111,27 @@ class CanvasBar(tk.Canvas):
             self.create_rectangle(0, 0, int(w * self._fraction), h, fill=TEAL, width=0)
             if self._text:
                 self.create_text(w // 2, h // 2, text=self._text, fill="white" if self._fraction > 0.55 else TEAL_DARK,
-                                 font=("Segoe UI", 9, "bold"))
+                                 font=(UI_FONT, 9, "bold"))
         elif self._idle_text:
-            self.create_text(w // 2, h // 2, text=self._idle_text, fill="#4e5b56", font=("Segoe UI", 9))
+            self.create_text(w // 2, h // 2, text=self._idle_text, fill="#4e5b56", font=(UI_FONT, 9))
 
 
 class App(_Root):
     def __init__(self, folder: str | None = None, langs: list[str] | None = None):
         super().__init__()
+        global UI_FONT
+        UI_FONT = _desktop_font()
         self.cfg = config.load()
         # Fenstergröße: zuletzt gemerkte, sonst nach Bildschirm (etwa 60 % × 80 %, zentriert)
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         geo = str(self.cfg.get("window") or "")
         m = re.fullmatch(r"(\d+)x(\d+)\+(-?\d+)\+(-?\d+)", geo)
-        if not m or int(m.group(3)) > sw - 200 or int(m.group(4)) > sh - 200:
-            w, h = min(int(sw * 0.62), 1180), min(int(sh * 0.82), 1050)
-            geo = f"{w}x{h}+{(sw - w) // 2}+{max(0, (sh - h) // 2 - 20)}"
-        self.geometry(geo)
+        fit = not m or int(m.group(3)) > sw - 200 or int(m.group(4)) > sh - 200
+        if not fit:
+            self.geometry(geo)
         self.minsize(640, 700)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
-        try:
-            self.iconbitmap(default=str(asset("icon.ico")))
-        except tk.TclError:
-            pass
+        set_icon(self, default=True)
         if langs:
             for l in langs:
                 if l not in self.cfg["known_languages"]:
@@ -124,6 +150,13 @@ class App(_Root):
         self._tip_cell = None
         self._style()
         self._build()
+        if fit:
+            # Höhe nach dem Platzbedarf der Widgets, damit auf kleinen Bildschirmen und mit größeren
+            # Linux-Schriften nichts abgeschnitten wird; Deckel bleibt der Bildschirm
+            self.update_idletasks()
+            w = min(int(sw * 0.62), 1180)
+            h = min(max(int(sh * 0.82), self.winfo_reqheight() + 8), 1050, sh - 60)
+            self.geometry(f"{w}x{h}+{(sw - w) // 2}+{max(0, (sh - h) // 2 - 20)}")
         if folder:
             self.after(200, self._trigger_scan)
 
@@ -147,7 +180,7 @@ class App(_Root):
         self.configure(bg=BG)
         s = ttk.Style(self)
         s.theme_use("clam")
-        s.configure(".", background=CARD, foreground=LIGHT, font=("Segoe UI", 10))
+        s.configure(".", background=CARD, foreground=LIGHT, font=(UI_FONT, 10))
         s.configure("TFrame", background=CARD)
         s.configure("Bg.TFrame", background=BG)
         s.configure("TLabel", background=CARD, foreground=LIGHT)
@@ -155,10 +188,10 @@ class App(_Root):
                     focuscolor="#f2f2f2", padding=(10, 2))
         s.map("TButton", background=[("active", "white"), ("pressed", "#d8d8d8")])
         s.configure("Square.TButton", padding=(6, 1))
-        s.configure("Cell.TButton", padding=(5, 0), font=("Segoe UI", 8, "bold"))
+        s.configure("Cell.TButton", padding=(5, 0), font=(UI_FONT, 8, "bold"))
         s.configure("Gear.TButton", padding=(5, 4))
         s.configure("Accent.TButton", background=TEAL, foreground="white", bordercolor=TEAL_DARK,
-                    font=("Segoe UI", 10, "bold"), padding=(10, 2))
+                    font=(UI_FONT, 10, "bold"), padding=(10, 2))
         s.map("Accent.TButton", background=[("disabled", "#6f8f86"), ("active", TEAL_DARK), ("pressed", TEAL_DARK)],
               foreground=[("disabled", "#d3ddd9")])
         s.configure("TMenubutton", background="white", foreground=INK, bordercolor=CARD_EDGE,
@@ -172,8 +205,8 @@ class App(_Root):
         self.option_add("*TCombobox*Listbox.background", "white")
         self.option_add("*TCombobox*Listbox.foreground", INK)
         s.configure("Treeview", background="white", fieldbackground="white", foreground=INK,
-                    rowheight=22, font=("Segoe UI", 9), bordercolor=CARD_EDGE)
-        s.configure("Treeview.Heading", background="#e8e8e8", foreground=INK, font=("Segoe UI", 9, "bold"),
+                    rowheight=22, font=(UI_FONT, 9), bordercolor=CARD_EDGE)
+        s.configure("Treeview.Heading", background="#e8e8e8", foreground=INK, font=(UI_FONT, 9, "bold"),
                     relief="solid", borderwidth=1, bordercolor="#b3bfbb", padding=(6, 3))
         s.map("Treeview", background=[("selected", TEAL)], foreground=[("selected", "white")])
 
@@ -258,7 +291,7 @@ class App(_Root):
         self.bar.pack(fill="x", padx=10, pady=(10, 2))
         self.bar.idle(self.t("ready"))
         srow = ttk.Frame(sec); srow.pack(fill="x", padx=10)
-        self.spinner = tk.Label(srow, text="", font=("Segoe UI", 12), fg="white", width=2, bg=CARD)
+        self.spinner = tk.Label(srow, text="", font=(UI_FONT, 12), fg="white", width=2, bg=CARD)
         self.spinner.pack(side="left")
         self.status = ttk.Label(srow, text="")
         self.status.pack(side="left", fill="x")
@@ -296,7 +329,7 @@ class App(_Root):
         cx, cy = w // 2, h // 2 - 26
         c.create_rectangle(cx - 4, cy - 9, cx + 4, cy + 4, fill=CARD, width=0)
         c.create_polygon(cx - 10, cy + 4, cx + 10, cy + 4, cx, cy + 15, fill=CARD, width=0)
-        c.create_text(cx, h // 2 + 22, text=self.t("drop_main"), font=("Segoe UI", 11, "bold"),
+        c.create_text(cx, h // 2 + 22, text=self.t("drop_main"), font=(UI_FONT, 11, "bold"),
                       fill=CARD, justify="center")
 
     def _build_lang_menu(self):
@@ -326,10 +359,7 @@ class App(_Root):
         """Scrollbare Checkbox-Liste aller Sprachen mit Filterfeld; angehakt = im Dropdown angeboten."""
         win = tk.Toplevel(self); win.title(self.t("pick_langs_title")); win.grab_set()
         win.configure(bg=BG); win.geometry("380x540"); win.resizable(False, True)
-        try:
-            win.iconbitmap(str(asset("icon.ico")))
-        except tk.TclError:
-            pass
+        set_icon(win)
         outer = ttk.Frame(win, padding=12, style="Bg.TFrame"); outer.pack(fill="both", expand=True)
         card = tk.Frame(outer, bg=CARD); card.pack(fill="both", expand=True)
         ttk.Label(card, text=self.t("pick_hint"), wraplength=330).pack(anchor="w", padx=10, pady=(10, 6))
@@ -368,7 +398,7 @@ class App(_Root):
                 label = uiname if uiname.casefold() == native.casefold() else f"{uiname}   ·   {native}"
                 tk.Checkbutton(inner, text=label, variable=vars_[code], bg="white", fg=INK,
                                activebackground="white", activeforeground=INK, anchor="w",
-                               font=("Segoe UI", 10), padx=8).pack(fill="x")
+                               font=(UI_FONT, 10), padx=8).pack(fill="x")
             canvas.yview_moveto(0)
 
         filter_var.trace_add("write", refill)
@@ -558,12 +588,12 @@ class App(_Root):
             return
         text = str(self.table.set(iid, colname))
         if colname == "imdb" or not text or \
-                tkfont.Font(font=("Segoe UI", 9)).measure(text) + 12 <= int(self.table.column(colid, "width")):
+                tkfont.Font(font=(UI_FONT, 9)).measure(text) + 12 <= int(self.table.column(colid, "width")):
             return
         self._tip = tk.Toplevel(self)
         self._tip.wm_overrideredirect(True)
         tk.Label(self._tip, text=text, bg="#fffbe6", fg=INK, relief="solid", borderwidth=1,
-                 font=("Segoe UI", 9), padx=6, pady=3).pack()
+                 font=(UI_FONT, 9), padx=6, pady=3).pack()
         self._tip.wm_geometry(f"+{event.x_root + 14}+{event.y_root + 18}")
 
     def _tip_hide(self, *_):
@@ -576,12 +606,9 @@ class App(_Root):
         """IMDb-ID für genau diese Zeile; bei Serien optional für alle Folgen derselben Serie."""
         win = tk.Toplevel(self); win.title("IMDb"); win.resizable(False, False); win.grab_set()
         win.configure(bg=CARD)
-        try:
-            win.iconbitmap(str(asset("icon.ico")))
-        except tk.TclError:
-            pass
+        set_icon(win)
         f = ttk.Frame(win, padding=14); f.pack(fill="both", expand=True)
-        ttk.Label(f, text=it.video.name, font=("Segoe UI", 9, "bold"), wraplength=400).pack(anchor="w")
+        ttk.Label(f, text=it.video.name, font=(UI_FONT, 9, "bold"), wraplength=400).pack(anchor="w")
         ttk.Label(f, text=self.t("imdb_popup_hint"), wraplength=400).pack(anchor="w", pady=(4, 8))
         var = tk.StringVar(value=it.imdb_id or "")
         e = ttk.Entry(f, textvariable=var, width=46)
@@ -647,7 +674,7 @@ class App(_Root):
     def browse(self):
         d = filedialog.askdirectory()
         if d:
-            self.folder_var.set(d.replace("/", "\\"))
+            self.folder_var.set(os.path.normpath(d))
             self._trigger_scan()
 
     def on_drop(self, event):
@@ -678,7 +705,7 @@ class App(_Root):
                                                    filetypes=[("Video", exts)], initialdir=folder)
                 if not video:
                     return
-                video = video.replace("/", "\\")
+                video = os.path.normpath(video)
         m = re.search(r"\.([a-z]{2}(?:-[a-z]{2})?)\.(?:srt|ass|ssa)$", os.path.basename(sub), re.IGNORECASE)
         # Regionalcodes normalisieren: pt-br → pt-BR
         lang = (m.group(1)[:2].lower() + m.group(1)[2:].upper()) if m \
@@ -826,16 +853,13 @@ class App(_Root):
     def settings(self):
         win = tk.Toplevel(self); win.title(self.t("st_title")); win.resizable(False, False); win.grab_set()
         win.configure(bg=BG)
-        try:
-            win.iconbitmap(str(asset("icon.ico")))
-        except tk.TclError:
-            pass
+        set_icon(win)
         outer = ttk.Frame(win, padding=14, style="Bg.TFrame"); outer.pack(fill="both", expand=True)
 
         def card(heading: str) -> tk.Frame:
             f = tk.Frame(outer, bg=CARD)
             f.pack(fill="x", pady=(0, 14))
-            tk.Label(f, text=heading, bg=CARD, fg="white", font=("Segoe UI", 10, "bold"))\
+            tk.Label(f, text=heading, bg=CARD, fg="white", font=(UI_FONT, 10, "bold"))\
                 .pack(anchor="w", padx=10, pady=(8, 4))
             return f
 
@@ -854,12 +878,13 @@ class App(_Root):
         ttk.Label(g, text=self.t("st_pw")).grid(row=1, column=0, sticky="w", pady=3)
         pw = tk.StringVar(value=config.decrypt(self.cfg["opensubtitles_password"]))
         ttk.Entry(g, textvariable=pw, width=30, show="•").grid(row=1, column=1, sticky="w", pady=3, padx=(8, 0))
-        reg = tk.Label(g, text="🔗 " + self.t("st_register"), fg="#bfffff", bg=CARD,
-                       cursor="hand2", font=("Segoe UI", 9, "underline"))
+        reg = tk.Label(g, text=LINK_ICON + self.t("st_register"), fg="#bfffff", bg=CARD,
+                       cursor="hand2", font=(UI_FONT, 9, "underline"))
         reg.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 2))
         reg.bind("<Button-1>", lambda e: webbrowser.open(OPENSUBTITLES_URL))
-        ttk.Label(g, text=self.t("st_pw_note"), foreground=GREY,
-                  font=("Segoe UI", 8)).grid(row=3, column=0, columnspan=2, sticky="w")
+        pw_note = {"dpapi": "st_pw_note", "keyring": "st_pw_note_keyring"}.get(config.secret_backend(), "st_pw_note_file")
+        ttk.Label(g, text=self.t(pw_note), foreground=GREY, wraplength=360,
+                  font=(UI_FONT, 8)).grid(row=3, column=0, columnspan=2, sticky="w")
 
         def ok():
             self.cfg["opensubtitles_user"] = user.get().strip()
@@ -873,7 +898,7 @@ class App(_Root):
         ttk.Button(b, text=self.t("st_cancel"), command=win.destroy).pack(side="left", padx=4)
         footrow = ttk.Frame(outer, style="Bg.TFrame"); footrow.pack(fill="x", pady=(12, 0))
         foot = tk.Label(footrow, text=f"SuperSubber {__version__}  ·  github.com/Cosmopolyte/supersubber",
-                        bg=BG, fg=GREY, cursor="hand2", font=("Segoe UI", 8))
+                        bg=BG, fg=GREY, cursor="hand2", font=(UI_FONT, 8))
         foot.pack(side="left")
         foot.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/Cosmopolyte/supersubber"))
         ttk.Button(footrow, text=self.t("st_check_updates"), style="Square.TButton",
@@ -946,7 +971,7 @@ class App(_Root):
 
 
 def main():
-    """supersubber.exe [Ordner] [--lang ru,de]  — mit Ordner wird sofort gestartet."""
+    """supersubber [Ordner] [--lang ru,de]  — mit Ordner wird sofort gestartet."""
     args = sys.argv[1:]
     langs = None
     if "--lang" in args:

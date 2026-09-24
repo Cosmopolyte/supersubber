@@ -103,10 +103,22 @@ def can_write(directory: Path) -> bool:
         return False
 
 
+def _bin(name: str) -> str:
+    """Pfad zum gebündelten Programm: Windows mit .exe, Linux ohne — dort wird das Ausführungsrecht sichergestellt,
+    falls es beim Entpacken verloren ging."""
+    p = bin_dir() / (name + ".exe" if sys.platform == "win32" else name)
+    if sys.platform != "win32" and p.exists() and not os.access(p, os.X_OK):
+        try:
+            p.chmod(p.stat().st_mode | 0o755)
+        except OSError:
+            pass
+    return str(p)
+
+
 def _duration_min(video: Path) -> float:
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
     try:
-        r = subprocess.run([str(bin_dir() / "ffprobe.exe"), "-v", "error", "-show_entries", "format=duration",
+        r = subprocess.run([_bin("ffprobe"), "-v", "error", "-show_entries", "format=duration",
                             "-of", "csv=p=0", str(video)], capture_output=True, text=True, creationflags=flags)
         return float(r.stdout.strip()) / 60
     except (OSError, ValueError):
@@ -124,11 +136,10 @@ def _alass(video: Path, sub: Path, out: Path, log: Log, tr: Tr = _tr_fallback,
            subprog: Callable[[float], None] | None = None) -> tuple[bool, bool]:
     """Sync ausführen; alass-Fortschritt (Audio-Analyse) wird live an subprog (0..1) gemeldet.
     Rückgabe: (erfolgreich, verdächtig) — verdächtig = mehrere Blöcke um Minuten verschoben."""
-    b = bin_dir()
-    env = dict(os.environ, ALASS_FFMPEG_PATH=str(b / "ffmpeg.exe"), ALASS_FFPROBE_PATH=str(b / "ffprobe.exe"))
+    env = dict(os.environ, ALASS_FFMPEG_PATH=_bin("ffmpeg"), ALASS_FFPROBE_PATH=_bin("ffprobe"))
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
     try:
-        proc = subprocess.Popen([str(b / "alass-cli.exe"), str(video), str(sub), str(out)],
+        proc = subprocess.Popen([_bin("alass-cli"), str(video), str(sub), str(out)],
                                 env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, encoding="utf-8", errors="replace", creationflags=flags)
     except OSError as e:

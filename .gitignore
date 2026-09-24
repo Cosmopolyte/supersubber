@@ -7,3 +7,10 @@ __pycache__/
 # Binaries (alass + ffmpeg) werden nicht versioniert -> fetch-bins.ps1
 bin/*.exe
 bin/*.dll
+
+# Linux binaries (fetch-bins.sh)
+bin/alass-cli
+bin/ffmpeg
+bin/ffprobe
+# Linux build artifacts
+*.AppImage

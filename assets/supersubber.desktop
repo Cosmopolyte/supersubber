@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SuperSubber
+Comment=Finds, downloads and syncs subtitles in bulk
+Exec=supersubber %F
+Icon=supersubber
+Terminal=false
+Categories=AudioVideo;Video;
+MimeType=inode/directory;video/x-matroska;video/mp4;video/x-msvideo;

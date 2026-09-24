@@ -115,6 +115,9 @@ STRINGS = {
         "st_pw": "Passwort:",
         "st_register": "Kostenlosen Account registrieren — 20 Untertitel-Downloads pro Tag",
         "st_pw_note": "Passwort wird verschlüsselt gespeichert (Windows DPAPI, nur dieser Benutzer).",
+        "st_pw_note_keyring": "Passwort wird im Schlüsselbund des Systems gespeichert.",
+        "st_pw_note_file": "Kein Schlüsselbund gefunden — das Passwort liegt nur schwach geschützt in einer Datei, "
+                           "die allein dieser Benutzer lesen kann: ~/.config/supersubber/secret",
         "st_save": "Speichern",
         "st_cancel": "Abbrechen",
         # Kern
@@ -202,6 +205,9 @@ STRINGS = {
         "st_pw": "Пароль:",
         "st_register": "Зарегистрировать бесплатный аккаунт — 20 загрузок субтитров в день",
         "st_pw_note": "Пароль хранится в зашифрованном виде (Windows DPAPI, только этот пользователь).",
+        "st_pw_note_keyring": "Пароль хранится в системной связке ключей.",
+        "st_pw_note_file": "Связка ключей не найдена — пароль хранится лишь слабо защищённым в файле, "
+                           "который может читать только этот пользователь: ~/.config/supersubber/secret",
         "st_save": "Сохранить",
         "st_cancel": "Отмена",
         "c_scan": "Поиск видеофайлов…",
@@ -288,6 +294,9 @@ STRINGS = {
         "st_pw": "Password:",
         "st_register": "Register free account — 20 subtitle downloads per day",
         "st_pw_note": "The password is stored encrypted (Windows DPAPI, this user only).",
+        "st_pw_note_keyring": "The password is stored in the system keyring.",
+        "st_pw_note_file": "No keyring found — the password is stored only weakly protected in a file "
+                           "that only this user can read: ~/.config/supersubber/secret",
         "st_save": "Save",
         "st_cancel": "Cancel",
         "c_scan": "Scanning for video files…",

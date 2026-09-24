@@ -1,3 +1,4 @@
 subliminal==2.7.1   # exakt gepinnt: core.py patcht Provider-Interna (parent_imdb_id)
 tkinterdnd2>=0.4
 pyinstaller>=6
+keyring>=25; sys_platform != "win32"   # Linux: OpenSubtitles password in the system keyring

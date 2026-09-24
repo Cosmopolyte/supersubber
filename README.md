@@ -1,6 +1,6 @@
 # SuperSubber — finds, downloads and syncs subtitles in bulk
 
-+ Open source, portable Windows tool
++ Open source, portable tool for Windows and Linux
 + Works on single video files or whole folders at once — a movie, a season or an entire show
 + Automatically downloads missing subtitles for every video
 + Synchronizes subtitles against the audio track of the video
@@ -13,10 +13,10 @@
 
 ## Usage
 
-1. Download the latest release zip, unpack it anywhere, run `supersubber.exe` — portable, no installation. Scoop users: `scoop bucket add cosmopolyte https://github.com/Cosmopolyte/scoop-bucket` and `scoop install supersubber`.
+1. **Windows:** download the release zip, unpack it anywhere, run `supersubber.exe` — portable, no installation. Scoop users: `scoop bucket add cosmopolyte https://github.com/Cosmopolyte/scoop-bucket` and `scoop install supersubber`. **Linux:** download the AppImage, make it executable with `chmod +x` and start it — or unpack the tar.gz and run `./supersubber`.
 2. Drag a video or folder into the window or pick one. SuperSubber searches the providers right away and lists every video in a table: what it was recognized as, and whether subtitles were found for each language. Nothing is downloaded yet.
 3. Hit **Start** once the search is done. Watch the per-video progress; a summary appears at the end. Videos that already have subtitles in a language are skipped, so re-running is always safe.
-4. CLI usage: `supersubber.exe <folder> [--lang ru,de]` starts processing that folder right away.
+4. CLI usage: `supersubber <folder> [--lang ru,de]` starts processing that folder right away — `supersubber.exe` on Windows, `./supersubber` or the AppImage on Linux.
 
 The UI speaks English, German and Russian. The subtitle-language dropdown starts with the ten most common languages — the **Languages…** button opens a searchable list of ~40 more, shown in their native names.
 
@@ -30,13 +30,13 @@ The UI speaks English, German and Russian. The subtitle-language dropdown starts
 
 ## Settings
 
-The free providers have no fixed daily quota; an optional free OpenSubtitles.com login adds 20 downloads per day on top. The password is stored encrypted with Windows DPAPI in `%APPDATA%\supersubber\config.json`. **Check for updates** asks GitHub for the latest release — nothing is installed automatically.
+The free providers have no fixed daily quota; an optional free OpenSubtitles.com login adds 20 downloads per day on top. On Windows the password is stored encrypted with DPAPI in `%APPDATA%\supersubber\config.json`. On Linux it goes into the system keyring and the config lives in `~/.config/supersubber`; without a keyring the password is kept in a file only your user can read, and the dialog says so. **Check for updates** asks GitHub for the latest release — nothing is installed automatically.
 
 <p align="center"><img src="assets/screenshot-settings.png" alt="Settings dialog" width="380"></p>
 
 ## Notes
 
-- **Windows only.** Uses DPAPI and ships Windows binaries; there are no plans for other platforms right now.
+- **Linux builds** are made and tested on Debian 13 with glibc 2.41 and need a similarly current distribution; older systems build from source. The AppImage needs FUSE like every AppImage — without it, run it with `--appimage-extract-and-run` or use the tar.gz.
 - **SmartScreen warning:** the executable is not code-signed, this is a free hobby tool. Windows may warn on first start — "More info" → "Run anyway", or build from source below.
 - **Provided as-is.** No support promises; issues and PRs are welcome but may take a while.
 - **Under the hood:** [subliminal](https://github.com/Diaoul/subliminal) searches and downloads from multiple providers, [alass](https://github.com/kaegi/alass) syncs via voice-activity analysis. See `THIRD-PARTY.md`.
@@ -48,6 +48,14 @@ python -m venv .venv; .\.venv\Scripts\pip install -r requirements.txt
 .\fetch-bins.ps1          # downloads alass + ffmpeg into bin\
 .\.venv\Scripts\python -m supersubber [folder]
 .\build.ps1               # dist\supersubber\ + dist\supersubber-<version>-win64.zip
+```
+
+```bash
+# Linux — needs python3, python3-venv and python3-tk from the distribution
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+./fetch-bins.sh           # downloads alass + a static ffmpeg into bin/
+.venv/bin/python -m supersubber [folder]
+./build.sh                # dist/supersubber/, .tar.gz and .AppImage
 ```
 
 Project layout: `supersubber/core.py` is the pipeline, `supersubber/app.py` the Tkinter GUI, plus `config.py` and `i18n.py`.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0 — 2026-09-24
+- Linux release: the same app as a tar.gz and as an AppImage, built on Debian 13. alass and a static ffmpeg build are bundled, nothing needs to be installed.
+- Linux stores the OpenSubtitles password in the system keyring. Without a keyring it falls back to a file only the user can read and says so in the settings dialog.
+- Config on Linux lives in `~/.config/supersubber`; the UI language follows `LANG` on first start.
+- Windows build unchanged apart from the shared code paths.
+
 ## 1.3.0 — 2026-09-22
 - Real buttons in the IMDb column: SET when empty, EDIT and a clear button once an ID is set. Clearing returns to the recognition from filename and NFO.
 - With an IMDb ID, Recognized-as shows the title the providers report for that ID, plus episode and ID.
