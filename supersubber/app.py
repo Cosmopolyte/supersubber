@@ -48,9 +48,10 @@ THEMES = {
         TIP_BG="#fffbe6",
         ROW_NONE="#8a3b2a", ROW_PRESENT="#7c8a86",
         LOG_WARN="#7a5c00", LOG_OK="#1e7a45", LOG_FAIL="#a83a2a", LOG_SEP="#8a9a95",
-        CHECK_BG="#245043",   # Kästchen der Checkboxen (Häkchen in Schriftfarbe)
+        CHECK_BG="#245043",   # Kästchen der Checkboxen auf Karten (Häkchen in Kartenschrift)
         GEAR="gear.png",
         DARK_TITLEBAR=True,   # Windows: dunkle Titelleiste, Farbe = BG
+        EDGE3D="",            # 3D-Kanten von clam: leer = Standard (hell), sonst Farbe
     ),
     "light": dict(
         BG="#d9e1dd", CARD="#f3f6f4", CARD_EDGE="#b4c2bc", TEAL="#00a3a3", TEAL_DARK="#007f7f",
@@ -62,7 +63,7 @@ THEMES = {
         DROP_FG="#2c5c4e", TIP_BG="#fffbe6",
         ROW_NONE="#8a3b2a", ROW_PRESENT="#7c8a86",
         LOG_WARN="#7a5c00", LOG_OK="#1e7a45", LOG_FAIL="#a83a2a", LOG_SEP="#8a9a95",
-        CHECK_BG="white", GEAR="gear.png", DARK_TITLEBAR=False,
+        CHECK_BG="white", GEAR="gear.png", DARK_TITLEBAR=False, EDGE3D="",
     ),
     "dark": dict(
         BG="#1a1c1e", CARD="#26292c", CARD_EDGE="#3b4045", TEAL="#00b0b0", TEAL_DARK="#008a8a",
@@ -74,13 +75,14 @@ THEMES = {
         DROP_FG="#00b0b0", TIP_BG="#403f2e",
         ROW_NONE="#e08a78", ROW_PRESENT="#9aa7a3",
         LOG_WARN="#e2c46a", LOG_OK="#7fd3a0", LOG_FAIL="#f08b7b", LOG_SEP="#7d8a86",
-        CHECK_BG="#141618", GEAR="gear_light.png", DARK_TITLEBAR=True,
+        CHECK_BG="#141618", GEAR="gear_light.png", DARK_TITLEBAR=True, EDGE3D="#3b4045",
     ),
 }
 BG = CARD = CARD_EDGE = TEAL = TEAL_DARK = INK = LIGHT = TITLE = GREY = LINK = FIELD = FIELD_ALT = ""
 IDLE_BG = IDLE_TEXT = HEAD = HEAD_EDGE = BTN = BTN_ACTIVE = BTN_PRESSED = ACCENT_DIS = ACCENT_DIS_FG = ""
 DROP_FG = TIP_BG = ROW_NONE = ROW_PRESENT = LOG_WARN = LOG_OK = LOG_FAIL = LOG_SEP = CHECK_BG = GEAR = ""
 DARK_TITLEBAR = False
+EDGE3D = ""
 
 
 def apply_theme(name: str) -> str:
@@ -269,8 +271,9 @@ class App(_Root):
         s = ttk.Style(self)
         s.theme_use("clam")
         # lightcolor/darkcolor = die 3D-Kanten von clam; ohne Zuweisung bleiben sie weiß und stören im Dunklen
-        s.configure(".", background=CARD, foreground=LIGHT, font=(UI_FONT, 10),
-                    bordercolor=CARD_EDGE, lightcolor=CARD_EDGE, darkcolor=CARD_EDGE)
+        s.configure(".", background=CARD, foreground=LIGHT, font=(UI_FONT, 10), bordercolor=CARD_EDGE)
+        if EDGE3D:
+            s.configure(".", lightcolor=EDGE3D, darkcolor=EDGE3D)
         s.configure("TFrame", background=CARD)
         s.configure("Bg.TFrame", background=BG)
         s.configure("TLabel", background=CARD, foreground=LIGHT)
@@ -295,8 +298,8 @@ class App(_Root):
         s.configure("TSpinbox", fieldbackground=FIELD, foreground=INK, background=BTN, bordercolor=CARD_EDGE,
                     arrowcolor=TEAL_DARK, padding=(4, 2))
         for sb_style in ("TScrollbar", "Vertical.TScrollbar"):
-            s.configure(sb_style, background=HEAD, troughcolor=IDLE_BG, lightcolor=HEAD, darkcolor=HEAD,
-                        bordercolor=CARD_EDGE, arrowcolor=INK)
+            s.configure(sb_style, background=HEAD, troughcolor=IDLE_BG, bordercolor=CARD_EDGE, arrowcolor=INK,
+                        **({"lightcolor": HEAD, "darkcolor": HEAD} if EDGE3D else {}))
             s.map(sb_style, background=[("active", HEAD_EDGE), ("pressed", HEAD_EDGE), ("disabled", IDLE_BG)],
                   arrowcolor=[("disabled", GREY)])
         self.option_add("*TCombobox*Listbox.background", FIELD)
@@ -504,7 +507,7 @@ class App(_Root):
                 # Name in der App-Sprache, dahinter die Eigenschreibweise zum Wiedererkennen
                 label = uiname if uiname.casefold() == native.casefold() else f"{uiname}   ·   {native}"
                 tk.Checkbutton(inner, text=label, variable=vars_[code], bg=FIELD, fg=INK,
-                               activebackground=FIELD, activeforeground=INK, anchor="w", selectcolor=CHECK_BG,
+                               activebackground=FIELD, activeforeground=INK, anchor="w", selectcolor=FIELD,
                                highlightthickness=0,
                                font=(UI_FONT, 10), padx=8).pack(fill="x")
             canvas.yview_moveto(0)
