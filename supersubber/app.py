@@ -306,6 +306,8 @@ class App(_Root):
         s.configure("Treeview.Heading", background=HEAD, foreground=INK, font=(UI_FONT, 9, "bold"),
                     relief="solid", borderwidth=1, bordercolor=HEAD_EDGE, padding=(6, 3))
         s.map("Treeview", background=[("selected", TEAL)], foreground=[("selected", "white")])
+        s.map("Treeview.Heading", background=[("active", HEAD_EDGE), ("pressed", HEAD_EDGE)],
+              foreground=[("active", INK), ("pressed", INK)])
 
     # ---- Aufbau -------------------------------------------------------------
     def _build(self):
@@ -437,7 +439,8 @@ class App(_Root):
 
     def _build_lang_menu(self):
         menu = tk.Menu(self.lang_btn, tearoff=0, bg=FIELD, fg=INK, activebackground=TEAL,
-                       activeforeground="white", selectcolor=INK, relief="flat", borderwidth=1)
+                       activeforeground="white", selectcolor=INK, relief="flat", borderwidth=0,
+                       activeborderwidth=0)
         self.lang_sel = {}
         for code in self.cfg["known_languages"]:
             var = tk.BooleanVar(value=code in self.cfg["languages"])
@@ -1028,16 +1031,8 @@ class App(_Root):
         theme_box.grid(row=0, column=1, sticky="w", pady=3, padx=(8, 0))
         ttk.Label(g3, text=self.t("st_extra_ext")).grid(row=1, column=0, sticky="w", pady=3)
         ext_var = tk.StringVar(value=str(self.cfg.get("video_extensions_extra", "")))
-        erow = ttk.Frame(g3); erow.grid(row=1, column=1, sticky="w", pady=3, padx=(8, 0))
-        ext_lbl = ttk.Label(erow, text="", foreground=GREY, font=(UI_FONT, 9))
-
-        def ext_text(*_):
-            extras = sorted(core.video_exts({"video_extensions_extra": ext_var.get()}) - core.VIDEO_EXT)
-            ext_lbl.configure(text=", ".join(e.lstrip(".") for e in extras) if extras else "—")
-        ttk.Button(erow, text=self.t("st_ext_edit"), style="Square.TButton",
-                   command=lambda: self._ext_dialog(win, ext_var)).pack(side="left")
-        ext_lbl.pack(side="left", padx=(10, 0))
-        ext_var.trace_add("write", ext_text); ext_text()
+        ttk.Button(g3, text=self.t("st_ext_edit"), style="Square.TButton",
+                   command=lambda: self._ext_dialog(win, ext_var)).grid(row=1, column=1, sticky="w", pady=3, padx=(8, 0))
         ttk.Label(g3, text=self.t("st_log_max")).grid(row=3, column=0, sticky="w", pady=(8, 3))
         log_var = tk.StringVar(value=str(self.cfg.get("log_max_mb", 20)))
         lrow = ttk.Frame(g3); lrow.grid(row=3, column=1, sticky="w", pady=(8, 3), padx=(8, 0))
