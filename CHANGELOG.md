@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.0 — unreleased
+- Log file: everything the window shows plus the details behind it — candidates per provider with scores, the subtitle that was chosen and why, IMDb lookups, alass output, crashes. Rotating, capped at 20 MB by default, size and an "Open log folder" button in the settings. When something goes wrong, send that file.
+- More video extensions: a settings field for extensions beyond mkv, mp4, avi, m4v, mov and wmv, e.g. `hevc, vp9` for renamed containers.
+- Color themes: green as before, plus light and dark, chosen in the settings.
+
 ## 1.4.2 — 2026-09-25
 - Settings dialog reordered: app language, OpenSubtitles account, then a Program section with the two checkboxes, the update button and the version. GitHub link at the bottom.
 

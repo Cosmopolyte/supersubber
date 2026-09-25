@@ -31,6 +31,9 @@ DEFAULTS = {
     "window": "",                        # letzte Fenstergeometrie „WxH+X+Y" (leer = nach Bildschirm berechnet)
     "check_updates_on_start": True,      # GitHub-Release-Abfrage beim Start, Hinweis nur bei neuerer Version
     "embedded_counts": True,             # eingebettete Untertitelspuren gelten als vorhanden
+    "video_extensions_extra": "",        # zusätzliche Video-Endungen, z. B. „hevc, vp9"
+    "log_max_mb": 20,                    # Obergrenze der Logdatei im Config-Ordner
+    "theme": "green",                    # Farbschema: green | light | dark
 }
 
 # Windows-Primary-LANGID → ISO-Kürzel, nur für die Default-known_languages relevant

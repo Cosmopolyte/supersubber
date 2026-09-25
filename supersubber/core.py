@@ -1,6 +1,7 @@
 """Kernablauf: Videos finden → fehlende Subs via subliminal laden → mit alass gegen die Tonspur syncen."""
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
@@ -13,7 +14,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-VIDEO_EXT = {".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv"}
+_LOG = logging.getLogger("supersubber.core")   # Details für die Logdatei, nicht fürs Fenster
+VIDEO_EXT = frozenset({".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv"})
 SUB_EXT = (".srt", ".ass", ".ssa")
 # Provider ohne Zugangsdaten; opensubtitlescom kommt dazu, sobald ein Login konfiguriert ist
 BASE_PROVIDERS = ["podnapisi", "gestdown", "tvsubtitles", "bsplayer", "opensubtitles"]
@@ -54,10 +56,17 @@ class Result:
 _SAMPLE_RE = re.compile(r"(^|[.\-_ ])sample([.\-_ ]|$)", re.IGNORECASE)
 
 
-def _is_video(p: Path, min_size_mb: int) -> bool:
+def video_exts(cfg: dict | None) -> frozenset:
+    """Standard-Endungen plus die aus den Settings („hevc, .vp9" → .hevc, .vp9)."""
+    extra = str((cfg or {}).get("video_extensions_extra", "") or "")
+    more = {"." + t.strip().lstrip(".").lower() for t in re.split(r"[,\s;]+", extra) if t.strip().lstrip(".")}
+    return VIDEO_EXT | frozenset(more)
+
+
+def _is_video(p: Path, min_size_mb: int, exts: frozenset = VIDEO_EXT) -> bool:
     """Videodatei ab Mindestgröße; Release-Samples („…-sample.mkv", „Sample\…") werden übersprungen —
     die wären bei 2160p groß genug, bekämen aber die Subs der ganzen Folge."""
-    if p.suffix.lower() not in VIDEO_EXT:
+    if p.suffix.lower() not in exts:
         return False
     if _SAMPLE_RE.search(p.stem) or p.parent.name.lower() == "sample":
         return False
@@ -67,22 +76,22 @@ def _is_video(p: Path, min_size_mb: int) -> bool:
         return False
 
 
-def find_videos(folder: str, min_size_mb: int) -> list[Path]:
+def find_videos(folder: str, min_size_mb: int, exts: frozenset = VIDEO_EXT) -> list[Path]:
     out = []
     for root, _, files in os.walk(folder):
         for f in files:
             p = Path(root) / f
-            if _is_video(p, min_size_mb):
+            if _is_video(p, min_size_mb, exts):
                 out.append(p)
     return sorted(out)
 
 
-def count_videos(folder: str, min_size_mb: int, limit: int = 2) -> int:
+def count_videos(folder: str, min_size_mb: int, limit: int = 2, exts: frozenset = VIDEO_EXT) -> int:
     """Zählt Videos, bricht bei `limit` ab (fürs GUI: „genau eines?")."""
     n = 0
     for root, _, files in os.walk(folder):
         for f in files:
-            if _is_video(Path(root) / f, min_size_mb):
+            if _is_video(Path(root) / f, min_size_mb, exts):
                 n += 1
                 if n >= limit:
                     return n
@@ -257,6 +266,8 @@ def _alass(video: Path, sub: Path, out: Path, log: Log, tr: Tr = _tr_fallback,
     if buf.strip():
         lines.append(buf)
     proc.wait()
+    _LOG.debug("alass %s <- %s (exit %s): %s", video.name, sub.name, proc.returncode,
+               " | ".join(l.strip() for l in lines if not re.match(r"\s*\d+ / \d+ \[", l)))
     big_shifts = 0
     for line in lines:
         if re.search(r"shifted|ratio is|error", line):
@@ -335,13 +346,14 @@ def _providers(cfg: dict, log: Log, tr: Tr):
         provider_configs["opensubtitlescom"] = {"username": user, "password": pw}
     else:
         log(tr("c_no_login"))
+    _LOG.debug("providers: %s", providers)
     return providers, provider_configs
 
 
 _IMDB_RE = re.compile(r"tt\d{7,10}")
 
 
-def _imdb_from_nfo(video: Path, episode: bool) -> str | None:
+def _imdb_from_nfo(video: Path, episode: bool, exts: frozenset = VIDEO_EXT) -> str | None:
     """IMDb-ID aus NFO-Dateien neben dem Video (Release-NFOs enthalten fast immer den IMDb-Link,
     Kodi-NFOs die ID strukturiert). Filme: NFO mit gleichem Stamm bevorzugt, sonst jede NFO im Ordner.
     Serien: nur tvshow.nfo (Ordner oder Elternordner) — Episoden-NFOs tragen die Episoden-ID, nicht die Serie."""
@@ -352,7 +364,7 @@ def _imdb_from_nfo(video: Path, episode: bool) -> str | None:
         cands = [same]
         # andere NFOs nur, wenn das Video allein im Ordner liegt — sonst bekäme jeder Film die ID des Nachbarn
         try:
-            alone = sum(1 for p in video.parent.iterdir() if p.suffix.lower() in VIDEO_EXT) == 1
+            alone = sum(1 for p in video.parent.iterdir() if p.suffix.lower() in exts) == 1
         except OSError:
             alone = False
         if alone:
@@ -495,23 +507,39 @@ def _title_from_candidates(cands: list, episode: bool) -> str:
     return f"{name} · {year}" if year else name
 
 
-def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None) -> None:
+def _scan_video(path: Path):
+    """Wie subliminal.scan_video, aber auch für Endungen, die subliminal nicht kennt (z. B. .hevc, .vp9 aus den
+    Settings): dann Erkennung aus dem Namen plus Dateigröße — der Hash rechnet ohnehin auf jeder Datei."""
+    from subliminal import scan_video
+    from subliminal.core import scan_name
+    from subliminal.video import VIDEO_EXTENSIONS
+    if path.name.lower().endswith(VIDEO_EXTENSIONS):
+        return scan_video(str(path))
+    v = scan_name(str(path))
+    v.size = path.stat().st_size
+    return v
+
+
+def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
+                 exts: frozenset = VIDEO_EXT) -> None:
     """Erkennen + NFO + Provider-Suche + Bewertung für ein Item. Lädt nichts herunter."""
     from babelfish import Language
-    from subliminal import refine, scan_video
+    from subliminal import refine
     from subliminal.score import episode_scores, movie_scores
     from subliminal.video import Episode
 
     it.candidates, it.found, it.error = [], {}, None
     try:
-        v = scan_video(str(it.video))
+        v = _scan_video(it.video)
         refine(v, refiners=("hash",))
         it.v = v
         it.recognized = _recognized(v)
+        _LOG.debug("%s: guessed %s %r size=%s hashes=%s", it.video.name, type(v).__name__, it.recognized,
+                   getattr(v, "size", None), sorted((getattr(v, "hashes", None) or {}).keys()))
         if manual_id:
             it.imdb_id, it.imdb_source = manual_id, "manual"
         elif not it.imdb_id:
-            nfo = _imdb_from_nfo(it.video, isinstance(v, Episode))
+            nfo = _imdb_from_nfo(it.video, isinstance(v, Episode), exts)
             if nfo:
                 it.imdb_id, it.imdb_source = nfo, "nfo"
                 log(tr("c_imdb_nfo", id=nfo))
@@ -536,12 +564,20 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None)
             if manual_id and not it.recognized.startswith("IMDb "):
                 it.recognized += f" · IMDb {manual_id}"
         score = _score_fn(v, it.imdb_id)
+        _LOG.debug("%s: imdb=%s (%s) min_score=%d candidates=%d", it.video.name, it.imdb_id or "-",
+                   it.imdb_source or "-", it.min_score, len(it.candidates))
+        for s in sorted(it.candidates, key=lambda s: -score(s, v)):
+            _LOG.debug("  cand %s %s id=%s score=%d matches=%s release=%r", s.provider_name, s.language,
+                       s.id, score(s, v), sorted(s.get_matches(v)),
+                       getattr(s, "release", None) or getattr(s, "info", None) or "")
         for lang in it.langs:
             L = Language.fromietf(lang)
             best = max((score(s, v) for s in it.candidates if s.language == L), default=0)
             it.found[lang] = best >= it.min_score
             it.status[lang] = "found" if it.found[lang] else "none"
+            _LOG.debug("%s: %s best=%d -> %s", it.video.name, lang, best, it.status[lang])
     except Exception as e:  # noqa: BLE001
+        _LOG.exception("%s: search failed", it.video.name)
         it.error = f"{type(e).__name__}: {e}"
         for lang in it.langs:
             it.found[lang] = False
@@ -557,7 +593,9 @@ def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: 
         from subliminal import ProviderPool
         _region_setup()
         progress(tr("c_scan"), 0, 0)
-        videos = find_videos(folder, int(cfg.get("min_size_mb", 50)))
+        exts = video_exts(cfg)
+        _LOG.info("scan %s languages=%s exts=%s", folder, languages, sorted(exts))
+        videos = find_videos(folder, int(cfg.get("min_size_mb", 50)), exts)
         if not videos:
             sc.error = tr("c_none")
             return sc
@@ -576,6 +614,7 @@ def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: 
             it = Item(video=v, langs=[])
             ext = external_subs(v)
             emb = embedded_subs(v) if use_embedded else {}
+            _LOG.debug("%s: external=%s embedded=%s", v.name, {k: (p.name, how) for k, (p, how) in ext.items()}, emb)
             for lang, (p, how) in ext.items():
                 if how == "detected":
                     log(tr("c_detected", file=p.name, lang=lang))
@@ -602,7 +641,7 @@ def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: 
                     sc.cancelled = True
                     break
                 progress(it.video.name, i, len(todo))
-                _search_item(pool, it, log, tr)
+                _search_item(pool, it, log, tr, exts=exts)
                 hits = [l for l in it.langs if it.found.get(l)]
                 log(tr("c_scan_item", name=it.video.name, rec=it.recognized or "?",
                        hits=", ".join(hits) if hits else "—"))
@@ -627,7 +666,7 @@ def rescan(items: list, imdb_id: str | None, cfg: dict, log: Log, cancel: thread
             else:
                 it.imdb_id, it.imdb_source = None, ""
                 log(tr("c_research", name=it.video.name))
-            _search_item(pool, it, log, tr, manual_id=imdb_id)
+            _search_item(pool, it, log, tr, manual_id=imdb_id, exts=video_exts(cfg))
             hits = [l for l in it.langs if it.found.get(l)]
             log(tr("c_scan_item", name=it.video.name, rec=it.recognized or "?",
                    hits=", ".join(hits) if hits else "—"))
@@ -668,6 +707,8 @@ def _download_item(pool, it: Item, tmp: Path, log: Log, tr: Tr) -> dict:
                     continue
                 rel = getattr(s, "release", None) or getattr(s, "info", None) or s.id
                 log(tr("c_got", lang=s.language.alpha2, rel=rel, prov=s.provider_name))
+                _LOG.info("%s: downloaded %s from %s id=%s score=%d cues=%d release=%r", it.video.name,
+                          s.language, s.provider_name, s.id, score(s, v), cues, rel)
                 _ensure_utf8(p)
                 got[s.language.alpha2] = p
                 want.discard(s.language)

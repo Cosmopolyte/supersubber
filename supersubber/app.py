@@ -14,7 +14,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 
-from . import __version__, config, core, i18n
+from . import __version__, config, core, i18n, logfile
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -22,16 +22,69 @@ try:
 except ImportError:  # ohne Drag & Drop trotzdem lauffähig
     DND_FILES, _Root = None, tk.Tk
 
-BG = "#2c5c4e"           # Fenster-Hintergrund (dunkler) — trennt die Bereiche sichtbar
-CARD = "#3d7d69"         # Bereichs-Flächen (vl-minisync-Rahmenton)
-CARD_EDGE = "#245043"
-TEAL = "#00b0b0"         # Akzent (vl-minisync-Tray-Türkis)
-TEAL_DARK = "#008a8a"
-INK = "#1b3a36"          # dunkle Schrift auf hellen Flächen
-LIGHT = "#dcebe5"        # helle Schrift auf dunklen Flächen
-IDLE_BG = "#e2e2dd"      # Ladebalken/Log im Ruhezustand — leichtes Grau statt Weiß
-OK_LIGHT, WARN_LIGHT, ERR_LIGHT = "#9fe8bb", "#ffd97a", "#ff9d8f"
-GREY = "#8aa79d"
+# Farbschemata: „green" ist das Original (vl-minisync-Töne), „light" und „dark" nutzen dieselbe Struktur.
+# apply_theme() schreibt die Werte als Modul-Konstanten, alle Widgets lesen sie beim Aufbau.
+THEMES = {
+    "green": dict(
+        BG="#2c5c4e",         # Fenster-Hintergrund (dunkler) — trennt die Bereiche sichtbar
+        CARD="#3d7d69",       # Bereichs-Flächen
+        CARD_EDGE="#245043",
+        TEAL="#00b0b0",       # Akzent
+        TEAL_DARK="#008a8a",
+        INK="#1b3a36",        # Schrift auf Eingabeflächen (Tabelle, Felder, Log)
+        LIGHT="#dcebe5",      # Schrift auf Karten
+        TITLE="white",        # Überschriften auf Karten
+        GREY="#8aa79d",       # Nebentexte auf Karten
+        LINK="#bfffff",
+        FIELD="white",        # Eingabeflächen
+        FIELD_ALT="#eef2f0",  # Zebra-Zeilen
+        IDLE_BG="#e2e2dd",    # Ladebalken/Log im Ruhezustand
+        IDLE_TEXT="#4e5b56",
+        HEAD="#e8e8e8",       # Tabellenkopf
+        HEAD_EDGE="#b3bfbb",
+        BTN="#f2f2f2", BTN_ACTIVE="white", BTN_PRESSED="#d8d8d8",
+        ACCENT_DIS="#6f8f86", ACCENT_DIS_FG="#d3ddd9",
+        DROP_FG="#3d7d69",    # Pfeil und Text in der Drop-Zone
+        TIP_BG="#fffbe6",
+        ROW_NONE="#8a3b2a", ROW_PRESENT="#7c8a86",
+        LOG_WARN="#7a5c00", LOG_OK="#1e7a45", LOG_FAIL="#a83a2a", LOG_SEP="#8a9a95",
+    ),
+    "light": dict(
+        BG="#d9e1dd", CARD="#f3f6f4", CARD_EDGE="#b4c2bc", TEAL="#00a3a3", TEAL_DARK="#007f7f",
+        INK="#1b3a36", LIGHT="#20302c", TITLE="#1b3a36", GREY="#5f6f6a", LINK="#006d6d",
+        FIELD="white", FIELD_ALT="#eef2f0", IDLE_BG="#e6e9e7", IDLE_TEXT="#5a6663",
+        HEAD="#e1e6e4", HEAD_EDGE="#b3bfbb",
+        BTN="#ffffff", BTN_ACTIVE="#f0f4f2", BTN_PRESSED="#d8dedb",
+        ACCENT_DIS="#9fc4bd", ACCENT_DIS_FG="#eef5f3",
+        DROP_FG="#2c5c4e", TIP_BG="#fffbe6",
+        ROW_NONE="#8a3b2a", ROW_PRESENT="#7c8a86",
+        LOG_WARN="#7a5c00", LOG_OK="#1e7a45", LOG_FAIL="#a83a2a", LOG_SEP="#8a9a95",
+    ),
+    "dark": dict(
+        BG="#1a1c1e", CARD="#26292c", CARD_EDGE="#3b4045", TEAL="#00b0b0", TEAL_DARK="#008a8a",
+        INK="#e4e6e5", LIGHT="#d6dad8", TITLE="white", GREY="#8b9398", LINK="#5fd3d3",
+        FIELD="#141618", FIELD_ALT="#1d2022", IDLE_BG="#1f2225", IDLE_TEXT="#9aa3a0",
+        HEAD="#2f3336", HEAD_EDGE="#4a5054",
+        BTN="#3a3f43", BTN_ACTIVE="#4a5054", BTN_PRESSED="#2f3336",
+        ACCENT_DIS="#3f5a54", ACCENT_DIS_FG="#8fa39d",
+        DROP_FG="#00b0b0", TIP_BG="#403f2e",
+        ROW_NONE="#e08a78", ROW_PRESENT="#9aa7a3",
+        LOG_WARN="#e2c46a", LOG_OK="#7fd3a0", LOG_FAIL="#f08b7b", LOG_SEP="#7d8a86",
+    ),
+}
+BG = CARD = CARD_EDGE = TEAL = TEAL_DARK = INK = LIGHT = TITLE = GREY = LINK = FIELD = FIELD_ALT = ""
+IDLE_BG = IDLE_TEXT = HEAD = HEAD_EDGE = BTN = BTN_ACTIVE = BTN_PRESSED = ACCENT_DIS = ACCENT_DIS_FG = ""
+DROP_FG = TIP_BG = ROW_NONE = ROW_PRESENT = LOG_WARN = LOG_OK = LOG_FAIL = LOG_SEP = ""
+
+
+def apply_theme(name: str) -> str:
+    """Schema als Modul-Konstanten setzen; unbekannter Name → green. Gibt den wirksamen Namen zurück."""
+    name = name if name in THEMES else "green"
+    globals().update(THEMES[name])
+    return name
+
+
+apply_theme("green")
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 OPENSUBTITLES_URL = "https://www.opensubtitles.com"
 IMDB_RE = re.compile(r"tt\d{6,10}")
@@ -113,7 +166,7 @@ class CanvasBar(tk.Canvas):
                 self.create_text(w // 2, h // 2, text=self._text, fill="white" if self._fraction > 0.55 else TEAL_DARK,
                                  font=(UI_FONT, 9, "bold"))
         elif self._idle_text:
-            self.create_text(w // 2, h // 2, text=self._idle_text, fill="#4e5b56", font=(UI_FONT, 9))
+            self.create_text(w // 2, h // 2, text=self._idle_text, fill=IDLE_TEXT, font=(UI_FONT, 9))
 
 
 class App(_Root):
@@ -122,6 +175,8 @@ class App(_Root):
         global UI_FONT
         UI_FONT = _desktop_font()
         self.cfg = config.load()
+        logfile.setup(self.cfg.get("log_max_mb", 20))
+        self.cfg["theme"] = apply_theme(str(self.cfg.get("theme", "green")))
         # Fenstergröße: zuletzt gemerkte, sonst nach Bildschirm (etwa 60 % × 80 %, zentriert)
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         geo = str(self.cfg.get("window") or "")
@@ -186,30 +241,33 @@ class App(_Root):
         s.configure("TFrame", background=CARD)
         s.configure("Bg.TFrame", background=BG)
         s.configure("TLabel", background=CARD, foreground=LIGHT)
-        s.configure("TButton", background="#f2f2f2", foreground=INK, bordercolor=CARD_EDGE,
-                    focuscolor="#f2f2f2", padding=(10, 2))
-        s.map("TButton", background=[("active", "white"), ("pressed", "#d8d8d8")])
+        s.configure("TButton", background=BTN, foreground=INK, bordercolor=CARD_EDGE,
+                    focuscolor=BTN, padding=(10, 2))
+        s.map("TButton", background=[("active", BTN_ACTIVE), ("pressed", BTN_PRESSED)])
         s.configure("Square.TButton", padding=(6, 1))
         s.configure("Cell.TButton", padding=(5, 0), font=(UI_FONT, 8, "bold"))
         s.configure("Gear.TButton", padding=(5, 4))
         s.configure("Accent.TButton", background=TEAL, foreground="white", bordercolor=TEAL_DARK,
                     font=(UI_FONT, 10, "bold"), padding=(10, 2))
-        s.map("Accent.TButton", background=[("disabled", "#6f8f86"), ("active", TEAL_DARK), ("pressed", TEAL_DARK)],
-              foreground=[("disabled", "#d3ddd9")])
-        s.configure("TMenubutton", background="white", foreground=INK, bordercolor=CARD_EDGE,
+        s.map("Accent.TButton", background=[("disabled", ACCENT_DIS), ("active", TEAL_DARK), ("pressed", TEAL_DARK)],
+              foreground=[("disabled", ACCENT_DIS_FG)])
+        s.configure("TMenubutton", background=FIELD, foreground=INK, bordercolor=CARD_EDGE,
                     arrowcolor=TEAL_DARK, padding=(10, 2))
-        s.configure("TEntry", fieldbackground="white", foreground=INK, bordercolor=CARD_EDGE, padding=(4, 2))
-        s.configure("TCombobox", fieldbackground="white", foreground=INK, bordercolor=CARD_EDGE,
-                    arrowcolor=TEAL_DARK)
-        s.map("TCombobox", fieldbackground=[("readonly", "white")], foreground=[("readonly", INK)])
-        s.configure("Vertical.TScrollbar", background="#e8e8e8", troughcolor=IDLE_BG,
+        s.configure("TEntry", fieldbackground=FIELD, foreground=INK, bordercolor=CARD_EDGE, padding=(4, 2))
+        s.configure("TCombobox", fieldbackground=FIELD, foreground=INK, bordercolor=CARD_EDGE,
+                    background=BTN, arrowcolor=TEAL_DARK)
+        s.map("TCombobox", fieldbackground=[("readonly", FIELD)], foreground=[("readonly", INK)],
+              background=[("readonly", BTN)])
+        s.configure("TSpinbox", fieldbackground=FIELD, foreground=INK, background=BTN, bordercolor=CARD_EDGE,
+                    arrowcolor=TEAL_DARK, padding=(4, 2))
+        s.configure("Vertical.TScrollbar", background=HEAD, troughcolor=IDLE_BG, lightcolor=HEAD, darkcolor=HEAD,
                     bordercolor=CARD_EDGE, arrowcolor=INK)
-        self.option_add("*TCombobox*Listbox.background", "white")
+        self.option_add("*TCombobox*Listbox.background", FIELD)
         self.option_add("*TCombobox*Listbox.foreground", INK)
-        s.configure("Treeview", background="white", fieldbackground="white", foreground=INK,
+        s.configure("Treeview", background=FIELD, fieldbackground=FIELD, foreground=INK,
                     rowheight=22, font=(UI_FONT, 9), bordercolor=CARD_EDGE)
-        s.configure("Treeview.Heading", background="#e8e8e8", foreground=INK, font=(UI_FONT, 9, "bold"),
-                    relief="solid", borderwidth=1, bordercolor="#b3bfbb", padding=(6, 3))
+        s.configure("Treeview.Heading", background=HEAD, foreground=INK, font=(UI_FONT, 9, "bold"),
+                    relief="solid", borderwidth=1, bordercolor=HEAD_EDGE, padding=(6, 3))
         s.map("Treeview", background=[("selected", TEAL)], foreground=[("selected", "white")])
 
     # ---- Aufbau -------------------------------------------------------------
@@ -267,11 +325,11 @@ class App(_Root):
         tcard.pack(fill="x", padx=10, pady=(14, 0))
         tf = ttk.Frame(tcard); tf.pack(fill="x", padx=10, pady=(10, 6))
         self.table = ttk.Treeview(tf, columns=("file",), show="headings", height=8, selectmode="browse")
-        self.table.tag_configure("none", foreground="#8a3b2a")
-        self.table.tag_configure("present", foreground="#7c8a86")
+        self.table.tag_configure("none", foreground=ROW_NONE)
+        self.table.tag_configure("present", foreground=ROW_PRESENT)
         self.table.tag_configure("ok", foreground=INK)
-        self.table.tag_configure("odd", background="#eef2f0")
-        self.table.tag_configure("even", background="white")
+        self.table.tag_configure("odd", background=FIELD_ALT)
+        self.table.tag_configure("even", background=FIELD)
         self.table.bind("<Button-1>", self._on_table_click)
         self.table.bind("<Motion>", self._on_table_motion)
         self.table.bind("<Leave>", self._tip_hide)
@@ -297,7 +355,7 @@ class App(_Root):
         self.bar.pack(fill="x", padx=10, pady=(10, 2))
         self.bar.idle(self.t("ready"))
         srow = ttk.Frame(sec); srow.pack(fill="x", padx=10)
-        self.spinner = tk.Label(srow, text="", font=(UI_FONT, 12), fg="white", width=2, bg=CARD)
+        self.spinner = tk.Label(srow, text="", font=(UI_FONT, 12), fg=TITLE, width=2, bg=CARD)
         self.spinner.pack(side="left")
         self.status = ttk.Label(srow, text="")
         self.status.pack(side="left", fill="x")
@@ -311,10 +369,10 @@ class App(_Root):
         self.log.configure(yscrollcommand=sb.set)
         self.log.tag_configure("head", font=("Consolas", 9, "bold"), spacing1=7)
         self.log.tag_configure("sub", lmargin1=20, lmargin2=20)
-        self.log.tag_configure("warn", foreground="#7a5c00")
-        self.log.tag_configure("ok", foreground="#1e7a45")
-        self.log.tag_configure("fail", foreground="#a83a2a")
-        self.log.tag_configure("sep", foreground="#8a9a95")
+        self.log.tag_configure("warn", foreground=LOG_WARN)
+        self.log.tag_configure("ok", foreground=LOG_OK)
+        self.log.tag_configure("fail", foreground=LOG_FAIL)
+        self.log.tag_configure("sep", foreground=LOG_SEP)
         sb.pack(side="right", fill="y")
         self.log.pack(side="left", fill="both", expand=True)
         lfoot = ttk.Frame(sec); lfoot.pack(fill="x", padx=10, pady=(0, 10))
@@ -332,13 +390,13 @@ class App(_Root):
         bw = min(380, max(280, w - 240))          # deutlich schmaler als das Fenster
         x0, x1 = (w - bw) // 2, (w + bw) // 2
         y0, y1 = 2, h - 2
-        c.create_rectangle(x0, y0, x1, y1, fill="white", width=0)
+        c.create_rectangle(x0, y0, x1, y1, fill=FIELD, width=0)
         c.create_rectangle(x0 + 12, y0 + 10, x1 - 12, y1 - 10, dash=(7, 4), outline=TEAL, width=2)
         cx, cy = w // 2, h // 2 - 26
-        c.create_rectangle(cx - 4, cy - 9, cx + 4, cy + 4, fill=CARD, width=0)
-        c.create_polygon(cx - 10, cy + 4, cx + 10, cy + 4, cx, cy + 15, fill=CARD, width=0)
+        c.create_rectangle(cx - 4, cy - 9, cx + 4, cy + 4, fill=DROP_FG, width=0)
+        c.create_polygon(cx - 10, cy + 4, cx + 10, cy + 4, cx, cy + 15, fill=DROP_FG, width=0)
         c.create_text(cx, h // 2 + 22, text=self.t("drop_main"), font=(UI_FONT, 11, "bold"),
-                      fill=CARD, justify="center")
+                      fill=DROP_FG, justify="center")
 
     def _build_lang_menu(self):
         menu = tk.Menu(self.lang_btn, tearoff=0)
@@ -378,11 +436,11 @@ class App(_Root):
         ttk.Entry(frow, textvariable=filter_var).pack(side="left", fill="x", expand=True)
 
         lf = ttk.Frame(card); lf.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        canvas = tk.Canvas(lf, bg="white", highlightthickness=1, highlightbackground=CARD_EDGE)
+        canvas = tk.Canvas(lf, bg=FIELD, highlightthickness=1, highlightbackground=CARD_EDGE)
         sb = ttk.Scrollbar(lf, orient="vertical", command=canvas.yview)
         canvas.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y"); canvas.pack(side="left", fill="both", expand=True)
-        inner = tk.Frame(canvas, bg="white")
+        inner = tk.Frame(canvas, bg=FIELD)
         canvas.create_window((0, 0), window=inner, anchor="nw")
         inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         win.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(-1 * (e.delta // 120), "units"))
@@ -404,8 +462,8 @@ class App(_Root):
                     continue
                 # Name in der App-Sprache, dahinter die Eigenschreibweise zum Wiedererkennen
                 label = uiname if uiname.casefold() == native.casefold() else f"{uiname}   ·   {native}"
-                tk.Checkbutton(inner, text=label, variable=vars_[code], bg="white", fg=INK,
-                               activebackground="white", activeforeground=INK, anchor="w",
+                tk.Checkbutton(inner, text=label, variable=vars_[code], bg=FIELD, fg=INK,
+                               activebackground=FIELD, activeforeground=INK, anchor="w",
                                font=(UI_FONT, 10), padx=8).pack(fill="x")
             canvas.yview_moveto(0)
 
@@ -602,7 +660,7 @@ class App(_Root):
             return
         self._tip = tk.Toplevel(self)
         self._tip.wm_overrideredirect(True)
-        tk.Label(self._tip, text=text, bg="#fffbe6", fg=INK, relief="solid", borderwidth=1,
+        tk.Label(self._tip, text=text, bg=TIP_BG, fg=INK, relief="solid", borderwidth=1,
                  font=(UI_FONT, 9), padx=6, pady=3).pack()
         self._tip.wm_geometry(f"+{event.x_root + 14}+{event.y_root + 18}")
 
@@ -621,7 +679,7 @@ class App(_Root):
                 return
             self._tip = tk.Toplevel(self)
             self._tip.wm_overrideredirect(True)
-            tk.Label(self._tip, text=s, bg="#fffbe6", fg=INK, relief="solid", borderwidth=1,
+            tk.Label(self._tip, text=s, bg=TIP_BG, fg=INK, relief="solid", borderwidth=1,
                      font=(UI_FONT, 9), padx=6, pady=3).pack()
             self._tip.wm_geometry(f"+{event.x_root + 14}+{event.y_root + 18}")
         widget.bind("<Enter>", show, add="+")
@@ -706,7 +764,7 @@ class App(_Root):
     def on_drop(self, event):
         paths = list(self.tk.splitlist(event.data))
         subs = [p for p in paths if os.path.splitext(p)[1].lower() in core.SUB_EXT]
-        vids = [p for p in paths if os.path.splitext(p)[1].lower() in core.VIDEO_EXT]
+        vids = [p for p in paths if os.path.splitext(p)[1].lower() in core.video_exts(self.cfg)]
         if subs:
             # Untertitel-File → lokalen Sync starten (Video ggf. automatisch/per Dialog)
             self._local_sync(subs[0], vids[0] if vids else None)
@@ -721,12 +779,12 @@ class App(_Root):
             return
         if not video:
             folder = os.path.dirname(sub)
-            vids = [v for v in core.find_videos(folder, int(self.cfg.get("min_size_mb", 50)))
+            vids = [v for v in core.find_videos(folder, int(self.cfg.get("min_size_mb", 50)), core.video_exts(self.cfg))
                     if str(v.parent) == folder]
             if len(vids) == 1:
                 video = str(vids[0])
             else:
-                exts = " ".join(f"*{e}" for e in sorted(core.VIDEO_EXT))
+                exts = " ".join(f"*{e}" for e in sorted(core.video_exts(self.cfg)))
                 video = filedialog.askopenfilename(title=self.t("pick_video"),
                                                    filetypes=[("Video", exts)], initialdir=folder)
                 if not video:
@@ -885,7 +943,7 @@ class App(_Root):
         def card(heading: str) -> tk.Frame:
             f = tk.Frame(outer, bg=CARD)
             f.pack(fill="x", pady=(0, 14))
-            tk.Label(f, text=heading, bg=CARD, fg="white", font=(UI_FONT, 10, "bold"))\
+            tk.Label(f, text=heading, bg=CARD, fg=TITLE, font=(UI_FONT, 10, "bold"))\
                 .pack(anchor="w", padx=10, pady=(8, 4))
             return f
 
@@ -904,7 +962,7 @@ class App(_Root):
         ttk.Label(g, text=self.t("st_pw")).grid(row=1, column=0, sticky="w", pady=3)
         pw = tk.StringVar(value=config.decrypt(self.cfg["opensubtitles_password"]))
         ttk.Entry(g, textvariable=pw, width=30, show="•").grid(row=1, column=1, sticky="w", pady=3, padx=(8, 0))
-        reg = tk.Label(g, text=LINK_ICON + self.t("st_register"), fg="#bfffff", bg=CARD,
+        reg = tk.Label(g, text=LINK_ICON + self.t("st_register"), fg=LINK, bg=CARD,
                        cursor="hand2", font=(UI_FONT, 9, "underline"))
         reg.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 2))
         reg.bind("<Button-1>", lambda e: webbrowser.open(OPENSUBTITLES_URL))
@@ -923,7 +981,24 @@ class App(_Root):
             return var
         emb_var = check("embedded_counts", "st_embedded", (0, 2))
         upd_var = check("check_updates_on_start", "st_upd_on_start", (0, 6))
-        urow = ttk.Frame(f3); urow.pack(fill="x", padx=10, pady=(0, 10))
+        g3 = ttk.Frame(f3); g3.pack(fill="x", padx=10, pady=(0, 6))
+        ttk.Label(g3, text=self.t("st_theme")).grid(row=0, column=0, sticky="w", pady=3)
+        theme_names = {k: self.t(f"theme_{k}") for k in THEMES}
+        theme_box = ttk.Combobox(g3, state="readonly", width=12, values=list(theme_names.values()))
+        theme_box.set(theme_names.get(self.cfg.get("theme", "green"), theme_names["green"]))
+        theme_box.grid(row=0, column=1, sticky="w", pady=3, padx=(8, 0))
+        ttk.Label(g3, text=self.t("st_extra_ext")).grid(row=1, column=0, sticky="w", pady=3)
+        ext_var = tk.StringVar(value=str(self.cfg.get("video_extensions_extra", "")))
+        ttk.Entry(g3, textvariable=ext_var, width=30).grid(row=1, column=1, sticky="w", pady=3, padx=(8, 0))
+        ttk.Label(g3, text=self.t("st_extra_ext_hint"), foreground=GREY, wraplength=360,
+                  font=(UI_FONT, 8)).grid(row=2, column=0, columnspan=2, sticky="w")
+        ttk.Label(g3, text=self.t("st_log_max")).grid(row=3, column=0, sticky="w", pady=(8, 3))
+        log_var = tk.StringVar(value=str(self.cfg.get("log_max_mb", 20)))
+        lrow = ttk.Frame(g3); lrow.grid(row=3, column=1, sticky="w", pady=(8, 3), padx=(8, 0))
+        ttk.Spinbox(lrow, from_=1, to=500, textvariable=log_var, width=5).pack(side="left")
+        ttk.Button(lrow, text=self.t("st_open_log"), style="Square.TButton",
+                   command=logfile.open_folder).pack(side="left", padx=(10, 0))
+        urow = ttk.Frame(f3); urow.pack(fill="x", padx=10, pady=(4, 10))
         ttk.Button(urow, text=self.t("st_check_updates"), style="Square.TButton",
                    command=lambda: self.check_updates(win)).pack(side="left")
         tk.Label(urow, text=f"SuperSubber {__version__}", bg=CARD, fg=LIGHT, font=(UI_FONT, 9))\
@@ -935,8 +1010,17 @@ class App(_Root):
             self.cfg["ui_language"] = next((c for c, n in i18n.UI_LANGS.items() if n == ui_box.get()), "en")
             self.cfg["check_updates_on_start"] = bool(upd_var.get())
             self.cfg["embedded_counts"] = bool(emb_var.get())
+            self.cfg["video_extensions_extra"] = ext_var.get().strip()
+            try:
+                self.cfg["log_max_mb"] = max(1, min(500, int(float(log_var.get().replace(",", ".")))))
+            except ValueError:
+                pass
+            self.cfg["theme"] = next((k for k, n in theme_names.items() if n == theme_box.get()), "green")
             config.save(self.cfg)
+            logfile.setup(self.cfg["log_max_mb"])
             win.destroy()
+            apply_theme(self.cfg["theme"])
+            self._style()
             self._build()
         b = ttk.Frame(outer, style="Bg.TFrame"); b.pack(pady=(2, 0))
         ttk.Button(b, text=self.t("st_save"), command=ok, style="Accent.TButton").pack(side="left", padx=4)
@@ -983,6 +1067,8 @@ class App(_Root):
 
     # ---- Log ----------------------------------------------------------------
     def _log_raw(self, s: str, tags: tuple[str, ...] = ()):
+        if s.strip():
+            logfile.log.info(s.strip())
         self.log.config(state="normal"); self.log.insert("end", s + "\n", tags); self.log.see("end"); self.log.config(state="disabled")
 
     def _log_sep(self, title: str = ""):
@@ -1000,6 +1086,7 @@ class App(_Root):
                 messagebox.showwarning("SuperSubber", str(e))
 
     def _log(self, s: str):
+        logfile.log.info(s.strip())
         tags: tuple[str, ...] = ()
         txt = s
         if s.startswith("    ") or s.startswith("  "):
