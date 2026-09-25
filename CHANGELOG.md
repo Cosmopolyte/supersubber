@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.1 — unreleased
+## 1.4.1 — 2026-09-25
 - Subtitle tracks embedded in the video now count as present: the table shows "embedded" and the language is skipped. A setting turns this off for people who want external files anyway. Forced-only tracks don't count.
 - Subtitle files next to the video are recognized with more name variants: `movie.eng.srt`, `movie.English.srt`, and files without any language tag like `movie.srt`, whose language is detected from the text and noted in the log. Forced files are ignored.
 - Tooltips on the folder, languages, settings and save-log buttons and on the IMDb buttons, so the ✕ no longer looks like it removes rows.
