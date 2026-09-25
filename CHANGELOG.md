@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.4.1 — unreleased
+- Settings: "Check for updates on start" checkbox, on by default. The start-up check only speaks up when a newer release exists; the manual button stays.
+
 ## 1.4.0 — 2026-09-24
 - Linux release: the same app as a tar.gz and as an AppImage, built on Debian 13. alass and a static ffmpeg build are bundled, nothing needs to be installed.
 - Linux stores the OpenSubtitles password in the system keyring. Without a keyring it falls back to a file only the user can read and says so in the settings dialog.

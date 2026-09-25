@@ -159,6 +159,8 @@ class App(_Root):
             self.geometry(f"{w}x{h}+{(sw - w) // 2}+{max(0, (sh - h) // 2 - 20)}")
         if folder:
             self.after(200, self._trigger_scan)
+        elif self.cfg.get("check_updates_on_start", True):
+            self.after(1500, lambda: self.check_updates(silent=True))
 
     def _on_close(self):
         try:
@@ -867,7 +869,11 @@ class App(_Root):
         f1 = card(self.t("sec_app_lang"))
         ui_box = ttk.Combobox(f1, state="readonly", width=18, values=list(i18n.UI_LANGS.values()))
         ui_box.set(i18n.UI_LANGS.get(self.ui, "English"))
-        ui_box.pack(anchor="w", padx=10, pady=(0, 10))
+        ui_box.pack(anchor="w", padx=10, pady=(0, 6))
+        upd_var = tk.BooleanVar(value=bool(self.cfg.get("check_updates_on_start", True)))
+        tk.Checkbutton(f1, text=self.t("st_upd_on_start"), variable=upd_var, bg=CARD, fg=LIGHT, activebackground=CARD,
+                       activeforeground=LIGHT, selectcolor=CARD_EDGE, highlightthickness=0, font=(UI_FONT, 9))\
+            .pack(anchor="w", padx=6, pady=(0, 8))
 
         # -- OpenSubtitles-Account
         f2 = card(self.t("sec_account"))
@@ -890,6 +896,7 @@ class App(_Root):
             self.cfg["opensubtitles_user"] = user.get().strip()
             self.cfg["opensubtitles_password"] = config.encrypt(pw.get())
             self.cfg["ui_language"] = next((c for c, n in i18n.UI_LANGS.items() if n == ui_box.get()), "en")
+            self.cfg["check_updates_on_start"] = bool(upd_var.get())
             config.save(self.cfg)
             win.destroy()
             self._build()
@@ -904,8 +911,9 @@ class App(_Root):
         ttk.Button(footrow, text=self.t("st_check_updates"), style="Square.TButton",
                    command=lambda: self.check_updates(win)).pack(side="right")
 
-    def check_updates(self, parent=None):
-        """Neuestes GitHub-Release abfragen und mit der eigenen Version vergleichen. Kein Auto-Update."""
+    def check_updates(self, parent=None, silent: bool = False):
+        """Neuestes GitHub-Release abfragen und mit der eigenen Version vergleichen. Kein Auto-Update.
+        silent = Start-Prüfung: nur melden, wenn es etwas Neueres gibt; „aktuell" und Fehler bleiben stumm."""
         import json
         import urllib.request
         url = "https://api.github.com/repos/Cosmopolyte/supersubber/releases/latest"
@@ -927,11 +935,13 @@ class App(_Root):
 
         def done(tag, page, err):
             if err:
-                messagebox.showwarning("SuperSubber", self.t("upd_err", err=err), parent=parent); return
+                if not silent:
+                    messagebox.showwarning("SuperSubber", self.t("upd_err", err=err), parent=parent)
+                return
             if tag and vt(tag) > vt(__version__):
                 if messagebox.askyesno("SuperSubber", self.t("upd_new", new=tag, cur=__version__), parent=parent):
                     webbrowser.open(page)
-            else:
+            elif not silent:
                 messagebox.showinfo("SuperSubber", self.t("upd_latest", cur=__version__), parent=parent)
 
         threading.Thread(target=work, daemon=True).start()
