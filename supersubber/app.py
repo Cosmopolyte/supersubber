@@ -52,6 +52,7 @@ THEMES = {
         GEAR="gear.png",
         DARK_TITLEBAR=True,   # Windows: dunkle Titelleiste, Farbe = BG
         EDGE3D="",            # 3D-Kanten von clam: leer = Standard (hell), sonst Farbe
+        BORDER="#8fb3a6",     # Umrandung von Knöpfen, Feldern, Tabelle — weicher als CARD_EDGE
     ),
     "light": dict(
         BG="#d9e1dd", CARD="#f3f6f4", CARD_EDGE="#b4c2bc", TEAL="#00a3a3", TEAL_DARK="#007f7f",
@@ -63,7 +64,7 @@ THEMES = {
         DROP_FG="#2c5c4e", TIP_BG="#fffbe6",
         ROW_NONE="#8a3b2a", ROW_PRESENT="#7c8a86",
         LOG_WARN="#7a5c00", LOG_OK="#1e7a45", LOG_FAIL="#a83a2a", LOG_SEP="#8a9a95",
-        CHECK_BG="white", GEAR="gear.png", DARK_TITLEBAR=False, EDGE3D="",
+        CHECK_BG="white", GEAR="gear.png", DARK_TITLEBAR=False, EDGE3D="", BORDER="#b4c2bc",
     ),
     "dark": dict(
         BG="#1a1c1e", CARD="#26292c", CARD_EDGE="#3b4045", TEAL="#00b0b0", TEAL_DARK="#008a8a",
@@ -75,7 +76,7 @@ THEMES = {
         DROP_FG="#00b0b0", TIP_BG="#403f2e",
         ROW_NONE="#e08a78", ROW_PRESENT="#9aa7a3",
         LOG_WARN="#e2c46a", LOG_OK="#7fd3a0", LOG_FAIL="#f08b7b", LOG_SEP="#7d8a86",
-        CHECK_BG="#141618", GEAR="gear_light.png", DARK_TITLEBAR=True, EDGE3D="#3b4045",
+        CHECK_BG="#141618", GEAR="gear_light.png", DARK_TITLEBAR=True, EDGE3D="#3b4045", BORDER="#3b4045",
     ),
 }
 BG = CARD = CARD_EDGE = TEAL = TEAL_DARK = INK = LIGHT = TITLE = GREY = LINK = FIELD = FIELD_ALT = ""
@@ -83,6 +84,7 @@ IDLE_BG = IDLE_TEXT = HEAD = HEAD_EDGE = BTN = BTN_ACTIVE = BTN_PRESSED = ACCENT
 DROP_FG = TIP_BG = ROW_NONE = ROW_PRESENT = LOG_WARN = LOG_OK = LOG_FAIL = LOG_SEP = CHECK_BG = GEAR = ""
 DARK_TITLEBAR = False
 EDGE3D = ""
+BORDER = ""
 
 
 def apply_theme(name: str) -> str:
@@ -271,13 +273,13 @@ class App(_Root):
         s = ttk.Style(self)
         s.theme_use("clam")
         # lightcolor/darkcolor = die 3D-Kanten von clam; ohne Zuweisung bleiben sie weiß und stören im Dunklen
-        s.configure(".", background=CARD, foreground=LIGHT, font=(UI_FONT, 10), bordercolor=CARD_EDGE)
+        s.configure(".", background=CARD, foreground=LIGHT, font=(UI_FONT, 10), bordercolor=BORDER)
         if EDGE3D:
             s.configure(".", lightcolor=EDGE3D, darkcolor=EDGE3D)
         s.configure("TFrame", background=CARD)
         s.configure("Bg.TFrame", background=BG)
         s.configure("TLabel", background=CARD, foreground=LIGHT)
-        s.configure("TButton", background=BTN, foreground=INK, bordercolor=CARD_EDGE,
+        s.configure("TButton", background=BTN, foreground=INK, bordercolor=BORDER,
                     focuscolor=BTN, padding=(10, 2))
         s.map("TButton", background=[("active", BTN_ACTIVE), ("pressed", BTN_PRESSED)])
         s.configure("Square.TButton", padding=(6, 1))
@@ -287,25 +289,25 @@ class App(_Root):
                     font=(UI_FONT, 10, "bold"), padding=(10, 2))
         s.map("Accent.TButton", background=[("disabled", ACCENT_DIS), ("active", TEAL_DARK), ("pressed", TEAL_DARK)],
               foreground=[("disabled", ACCENT_DIS_FG)])
-        s.configure("TMenubutton", background=FIELD, foreground=INK, bordercolor=CARD_EDGE,
+        s.configure("TMenubutton", background=FIELD, foreground=INK, bordercolor=BORDER,
                     arrowcolor=TEAL_DARK, padding=(10, 2))
         s.map("TMenubutton", background=[("active", FIELD), ("pressed", FIELD_ALT)], foreground=[("active", INK)])
-        s.configure("TEntry", fieldbackground=FIELD, foreground=INK, bordercolor=CARD_EDGE, padding=(4, 2))
-        s.configure("TCombobox", fieldbackground=FIELD, foreground=INK, bordercolor=CARD_EDGE,
+        s.configure("TEntry", fieldbackground=FIELD, foreground=INK, bordercolor=BORDER, padding=(4, 2))
+        s.configure("TCombobox", fieldbackground=FIELD, foreground=INK, bordercolor=BORDER,
                     background=BTN, arrowcolor=TEAL_DARK)
         s.map("TCombobox", fieldbackground=[("readonly", FIELD)], foreground=[("readonly", INK)],
               background=[("readonly", BTN)])
-        s.configure("TSpinbox", fieldbackground=FIELD, foreground=INK, background=BTN, bordercolor=CARD_EDGE,
+        s.configure("TSpinbox", fieldbackground=FIELD, foreground=INK, background=BTN, bordercolor=BORDER,
                     arrowcolor=TEAL_DARK, padding=(4, 2))
         for sb_style in ("TScrollbar", "Vertical.TScrollbar"):
-            s.configure(sb_style, background=HEAD, troughcolor=IDLE_BG, bordercolor=CARD_EDGE, arrowcolor=INK,
+            s.configure(sb_style, background=HEAD, troughcolor=IDLE_BG, bordercolor=BORDER, arrowcolor=INK,
                         **({"lightcolor": HEAD, "darkcolor": HEAD} if EDGE3D else {}))
             s.map(sb_style, background=[("active", HEAD_EDGE), ("pressed", HEAD_EDGE), ("disabled", IDLE_BG)],
                   arrowcolor=[("disabled", GREY)])
         self.option_add("*TCombobox*Listbox.background", FIELD)
         self.option_add("*TCombobox*Listbox.foreground", INK)
         s.configure("Treeview", background=FIELD, fieldbackground=FIELD, foreground=INK,
-                    rowheight=22, font=(UI_FONT, 9), bordercolor=CARD_EDGE)
+                    rowheight=22, font=(UI_FONT, 9), bordercolor=BORDER)
         s.configure("Treeview.Heading", background=HEAD, foreground=INK, font=(UI_FONT, 9, "bold"),
                     relief="solid", borderwidth=1, bordercolor=HEAD_EDGE, padding=(6, 3))
         s.map("Treeview", background=[("selected", TEAL)], foreground=[("selected", "white")])
