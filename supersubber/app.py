@@ -272,10 +272,13 @@ class App(_Root):
         self.configure(bg=BG)
         s = ttk.Style(self)
         s.theme_use("clam")
-        # lightcolor/darkcolor = die 3D-Kanten von clam; ohne Zuweisung bleiben sie weiß und stören im Dunklen
-        s.configure(".", background=CARD, foreground=LIGHT, font=(UI_FONT, 10), bordercolor=BORDER)
-        if EDGE3D:
-            s.configure(".", lightcolor=EDGE3D, darkcolor=EDGE3D)
+        # lightcolor/darkcolor = die 3D-Kanten von clam. Styles sind prozessweit und überleben einen Schema-
+        # wechsel, deshalb immer BEIDE Werte setzen: dunkles Schema eigene Farbe, sonst die clam-Vorgabe.
+        if not hasattr(self, "_clam_edges"):
+            self._clam_edges = (s.lookup(".", "lightcolor") or "#eeebe7", s.lookup(".", "darkcolor") or "#cfcdc8")
+        light_edge, dark_edge = (EDGE3D, EDGE3D) if EDGE3D else self._clam_edges
+        s.configure(".", background=CARD, foreground=LIGHT, font=(UI_FONT, 10), bordercolor=BORDER,
+                    lightcolor=light_edge, darkcolor=dark_edge)
         s.configure("TFrame", background=CARD)
         s.configure("Bg.TFrame", background=BG)
         s.configure("TLabel", background=CARD, foreground=LIGHT)
@@ -301,7 +304,7 @@ class App(_Root):
                     arrowcolor=TEAL_DARK, padding=(4, 2))
         for sb_style in ("TScrollbar", "Vertical.TScrollbar"):
             s.configure(sb_style, background=HEAD, troughcolor=IDLE_BG, bordercolor=BORDER, arrowcolor=INK,
-                        **({"lightcolor": HEAD, "darkcolor": HEAD} if EDGE3D else {}))
+                        lightcolor=HEAD if EDGE3D else light_edge, darkcolor=HEAD if EDGE3D else dark_edge)
             s.map(sb_style, background=[("active", HEAD_EDGE), ("pressed", HEAD_EDGE), ("disabled", IDLE_BG)],
                   arrowcolor=[("disabled", GREY)])
         self.option_add("*TCombobox*Listbox.background", FIELD)
