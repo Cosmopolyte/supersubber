@@ -11,7 +11,7 @@ import threading
 import tkinter as tk
 import webbrowser
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, ttk
 from tkinter import font as tkfont
 
 from . import __version__, config, core, i18n, logfile
@@ -48,6 +48,9 @@ THEMES = {
         TIP_BG="#fffbe6",
         ROW_NONE="#8a3b2a", ROW_PRESENT="#7c8a86",
         LOG_WARN="#7a5c00", LOG_OK="#1e7a45", LOG_FAIL="#a83a2a", LOG_SEP="#8a9a95",
+        CHECK_BG="#245043",   # Kästchen der Checkboxen (Häkchen in Schriftfarbe)
+        GEAR="gear.png",
+        DARK_TITLEBAR=True,   # Windows: dunkle Titelleiste, Farbe = BG
     ),
     "light": dict(
         BG="#d9e1dd", CARD="#f3f6f4", CARD_EDGE="#b4c2bc", TEAL="#00a3a3", TEAL_DARK="#007f7f",
@@ -59,6 +62,7 @@ THEMES = {
         DROP_FG="#2c5c4e", TIP_BG="#fffbe6",
         ROW_NONE="#8a3b2a", ROW_PRESENT="#7c8a86",
         LOG_WARN="#7a5c00", LOG_OK="#1e7a45", LOG_FAIL="#a83a2a", LOG_SEP="#8a9a95",
+        CHECK_BG="white", GEAR="gear.png", DARK_TITLEBAR=False,
     ),
     "dark": dict(
         BG="#1a1c1e", CARD="#26292c", CARD_EDGE="#3b4045", TEAL="#00b0b0", TEAL_DARK="#008a8a",
@@ -70,11 +74,13 @@ THEMES = {
         DROP_FG="#00b0b0", TIP_BG="#403f2e",
         ROW_NONE="#e08a78", ROW_PRESENT="#9aa7a3",
         LOG_WARN="#e2c46a", LOG_OK="#7fd3a0", LOG_FAIL="#f08b7b", LOG_SEP="#7d8a86",
+        CHECK_BG="#141618", GEAR="gear_light.png", DARK_TITLEBAR=True,
     ),
 }
 BG = CARD = CARD_EDGE = TEAL = TEAL_DARK = INK = LIGHT = TITLE = GREY = LINK = FIELD = FIELD_ALT = ""
 IDLE_BG = IDLE_TEXT = HEAD = HEAD_EDGE = BTN = BTN_ACTIVE = BTN_PRESSED = ACCENT_DIS = ACCENT_DIS_FG = ""
-DROP_FG = TIP_BG = ROW_NONE = ROW_PRESENT = LOG_WARN = LOG_OK = LOG_FAIL = LOG_SEP = ""
+DROP_FG = TIP_BG = ROW_NONE = ROW_PRESENT = LOG_WARN = LOG_OK = LOG_FAIL = LOG_SEP = CHECK_BG = GEAR = ""
+DARK_TITLEBAR = False
 
 
 def apply_theme(name: str) -> str:
@@ -107,6 +113,30 @@ def _desktop_font() -> str:
 def asset(name: str) -> Path:
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     return base / "assets" / name
+
+
+def style_titlebar(win: tk.Misc) -> None:
+    """Windows: Titelleiste in der Fensterfarbe (Windows 11) bzw. dunkel (Windows 10). Andere Systeme: nichts."""
+    if not WIN:
+        return
+    try:
+        import ctypes
+        win.update_idletasks()
+        hwnd = ctypes.windll.user32.GetParent(win.winfo_id())
+        dwm = ctypes.windll.dwmapi
+
+        def colorref(hex_color: str) -> int:
+            h = hex_color.lstrip("#")
+            r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+            return (b << 16) | (g << 8) | r
+        dark = ctypes.c_int(1 if DARK_TITLEBAR else 0)
+        dwm.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(dark), ctypes.sizeof(dark))        # immersive dark mode
+        cap = ctypes.c_int(colorref(BG))
+        dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(cap), ctypes.sizeof(cap))          # caption color (Win 11)
+        txt = ctypes.c_int(colorref("#ffffff" if DARK_TITLEBAR else "#1b3a36"))
+        dwm.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(txt), ctypes.sizeof(txt))          # caption text color
+    except Exception:  # noqa: BLE001 — älteres Windows oder kein DWM: Standard-Titelleiste
+        pass
 
 
 def set_icon(win: tk.Misc, default: bool = False) -> None:
@@ -187,6 +217,7 @@ class App(_Root):
         self.minsize(640, 700)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         set_icon(self, default=True)
+        style_titlebar(self)
         if langs:
             for l in langs:
                 if l not in self.cfg["known_languages"]:
@@ -237,7 +268,9 @@ class App(_Root):
         self.configure(bg=BG)
         s = ttk.Style(self)
         s.theme_use("clam")
-        s.configure(".", background=CARD, foreground=LIGHT, font=(UI_FONT, 10))
+        # lightcolor/darkcolor = die 3D-Kanten von clam; ohne Zuweisung bleiben sie weiß und stören im Dunklen
+        s.configure(".", background=CARD, foreground=LIGHT, font=(UI_FONT, 10),
+                    bordercolor=CARD_EDGE, lightcolor=CARD_EDGE, darkcolor=CARD_EDGE)
         s.configure("TFrame", background=CARD)
         s.configure("Bg.TFrame", background=BG)
         s.configure("TLabel", background=CARD, foreground=LIGHT)
@@ -253,6 +286,7 @@ class App(_Root):
               foreground=[("disabled", ACCENT_DIS_FG)])
         s.configure("TMenubutton", background=FIELD, foreground=INK, bordercolor=CARD_EDGE,
                     arrowcolor=TEAL_DARK, padding=(10, 2))
+        s.map("TMenubutton", background=[("active", FIELD), ("pressed", FIELD_ALT)], foreground=[("active", INK)])
         s.configure("TEntry", fieldbackground=FIELD, foreground=INK, bordercolor=CARD_EDGE, padding=(4, 2))
         s.configure("TCombobox", fieldbackground=FIELD, foreground=INK, bordercolor=CARD_EDGE,
                     background=BTN, arrowcolor=TEAL_DARK)
@@ -260,8 +294,11 @@ class App(_Root):
               background=[("readonly", BTN)])
         s.configure("TSpinbox", fieldbackground=FIELD, foreground=INK, background=BTN, bordercolor=CARD_EDGE,
                     arrowcolor=TEAL_DARK, padding=(4, 2))
-        s.configure("Vertical.TScrollbar", background=HEAD, troughcolor=IDLE_BG, lightcolor=HEAD, darkcolor=HEAD,
-                    bordercolor=CARD_EDGE, arrowcolor=INK)
+        for sb_style in ("TScrollbar", "Vertical.TScrollbar"):
+            s.configure(sb_style, background=HEAD, troughcolor=IDLE_BG, lightcolor=HEAD, darkcolor=HEAD,
+                        bordercolor=CARD_EDGE, arrowcolor=INK)
+            s.map(sb_style, background=[("active", HEAD_EDGE), ("pressed", HEAD_EDGE), ("disabled", IDLE_BG)],
+                  arrowcolor=[("disabled", GREY)])
         self.option_add("*TCombobox*Listbox.background", FIELD)
         self.option_add("*TCombobox*Listbox.foreground", INK)
         s.configure("Treeview", background=FIELD, fieldbackground=FIELD, foreground=INK,
@@ -279,7 +316,7 @@ class App(_Root):
         # Zahnrad in eigener Zeile ganz oben rechts (auf dem Hintergrund)
         gearrow = ttk.Frame(self, style="Bg.TFrame"); gearrow.pack(fill="x", padx=10, pady=(8, 6))
         try:
-            self._gear_img = tk.PhotoImage(file=str(asset("gear.png")))
+            self._gear_img = tk.PhotoImage(file=str(asset(GEAR)))
             gear = ttk.Button(gearrow, image=self._gear_img, style="Gear.TButton", command=self.settings)
         except tk.TclError:
             gear = ttk.Button(gearrow, text="⚙", width=3, style="Gear.TButton", command=self.settings)
@@ -399,7 +436,8 @@ class App(_Root):
                       fill=DROP_FG, justify="center")
 
     def _build_lang_menu(self):
-        menu = tk.Menu(self.lang_btn, tearoff=0)
+        menu = tk.Menu(self.lang_btn, tearoff=0, bg=FIELD, fg=INK, activebackground=TEAL,
+                       activeforeground="white", selectcolor=INK, relief="flat", borderwidth=1)
         self.lang_sel = {}
         for code in self.cfg["known_languages"]:
             var = tk.BooleanVar(value=code in self.cfg["languages"])
@@ -425,7 +463,7 @@ class App(_Root):
         """Scrollbare Checkbox-Liste aller Sprachen mit Filterfeld; angehakt = im Dropdown angeboten."""
         win = tk.Toplevel(self); win.title(self.t("pick_langs_title")); win.grab_set()
         win.configure(bg=BG); win.geometry("380x540"); win.resizable(False, True)
-        set_icon(win)
+        set_icon(win); style_titlebar(win)
         outer = ttk.Frame(win, padding=12, style="Bg.TFrame"); outer.pack(fill="both", expand=True)
         card = tk.Frame(outer, bg=CARD); card.pack(fill="both", expand=True)
         ttk.Label(card, text=self.t("pick_hint"), wraplength=330).pack(anchor="w", padx=10, pady=(10, 6))
@@ -463,7 +501,8 @@ class App(_Root):
                 # Name in der App-Sprache, dahinter die Eigenschreibweise zum Wiedererkennen
                 label = uiname if uiname.casefold() == native.casefold() else f"{uiname}   ·   {native}"
                 tk.Checkbutton(inner, text=label, variable=vars_[code], bg=FIELD, fg=INK,
-                               activebackground=FIELD, activeforeground=INK, anchor="w",
+                               activebackground=FIELD, activeforeground=INK, anchor="w", selectcolor=CHECK_BG,
+                               highlightthickness=0,
                                font=(UI_FONT, 10), padx=8).pack(fill="x")
             canvas.yview_moveto(0)
 
@@ -477,7 +516,7 @@ class App(_Root):
         def ok():
             checked = [c for c in entries if vars_[c].get()]
             if not checked:
-                messagebox.showwarning("SuperSubber", self.t("warn_lang"), parent=win)
+                self._dialog(win, self.t("warn_lang"))
                 return
             added = [c for c in checked if c not in self.cfg["known_languages"]]
             self.cfg["known_languages"] = checked
@@ -690,7 +729,7 @@ class App(_Root):
         """IMDb-ID für genau diese Zeile; bei Serien optional für alle Folgen derselben Serie."""
         win = tk.Toplevel(self); win.title("IMDb"); win.resizable(False, False); win.grab_set()
         win.configure(bg=CARD)
-        set_icon(win)
+        set_icon(win); style_titlebar(win)
         f = ttk.Frame(win, padding=14); f.pack(fill="both", expand=True)
         ttk.Label(f, text=it.video.name, font=(UI_FONT, 9, "bold"), wraplength=400).pack(anchor="w")
         ttk.Label(f, text=self.t("imdb_popup_hint"), wraplength=400).pack(anchor="w", pady=(4, 8))
@@ -704,14 +743,14 @@ class App(_Root):
         if siblings:
             tk.Checkbutton(f, text=self.t("imdb_all_eps", n=len(siblings), show=show), variable=all_var,
                            bg=CARD, fg=LIGHT, activebackground=CARD, activeforeground=LIGHT,
-                           selectcolor=CARD_EDGE, highlightthickness=0, wraplength=400,
+                           selectcolor=CHECK_BG, highlightthickness=0, wraplength=400,
                            justify="left").pack(anchor="w", pady=(8, 0))
 
         def ok(*_):
             raw = var.get().strip()
             m = IMDB_RE.search(raw)
             if not m:
-                messagebox.showwarning("SuperSubber", self.t("c_imdb_invalid", val=raw), parent=win); return
+                self._dialog(win, self.t("c_imdb_invalid", val=raw)); return
             items = [it] + (siblings if all_var.get() else [])
             win.destroy()
             self._rescan(items, m.group(0))
@@ -795,7 +834,7 @@ class App(_Root):
         lang = (m.group(1)[:2].lower() + m.group(1)[2:].upper()) if m \
             else next((c for c, v in self.lang_sel.items() if v.get()), None)
         if not lang:
-            messagebox.showwarning("SuperSubber", self.t("warn_lang")); return
+            self._dialog(self, self.t("warn_lang")); return
         self.folder_var.set(os.path.dirname(video))
         self.cancel.clear()
         self._log_sep(os.path.basename(sub))
@@ -937,7 +976,7 @@ class App(_Root):
     def settings(self):
         win = tk.Toplevel(self); win.title(self.t("st_title")); win.resizable(False, False); win.grab_set()
         win.configure(bg=BG)
-        set_icon(win)
+        set_icon(win); style_titlebar(win)
         outer = ttk.Frame(win, padding=14, style="Bg.TFrame"); outer.pack(fill="both", expand=True)
 
         def card(heading: str) -> tk.Frame:
@@ -976,7 +1015,7 @@ class App(_Root):
         def check(var_name: str, key: str, pady) -> tk.BooleanVar:
             var = tk.BooleanVar(value=bool(self.cfg.get(var_name, True)))
             tk.Checkbutton(f3, text=self.t(key), variable=var, bg=CARD, fg=LIGHT, activebackground=CARD,
-                           activeforeground=LIGHT, selectcolor=CARD_EDGE, highlightthickness=0, font=(UI_FONT, 9))\
+                           activeforeground=LIGHT, selectcolor=CHECK_BG, highlightthickness=0, font=(UI_FONT, 9))\
                 .pack(anchor="w", padx=6, pady=pady)
             return var
         emb_var = check("embedded_counts", "st_embedded", (0, 2))
@@ -989,9 +1028,16 @@ class App(_Root):
         theme_box.grid(row=0, column=1, sticky="w", pady=3, padx=(8, 0))
         ttk.Label(g3, text=self.t("st_extra_ext")).grid(row=1, column=0, sticky="w", pady=3)
         ext_var = tk.StringVar(value=str(self.cfg.get("video_extensions_extra", "")))
-        ttk.Entry(g3, textvariable=ext_var, width=30).grid(row=1, column=1, sticky="w", pady=3, padx=(8, 0))
-        ttk.Label(g3, text=self.t("st_extra_ext_hint"), foreground=GREY, wraplength=360,
-                  font=(UI_FONT, 8)).grid(row=2, column=0, columnspan=2, sticky="w")
+        erow = ttk.Frame(g3); erow.grid(row=1, column=1, sticky="w", pady=3, padx=(8, 0))
+        ext_lbl = ttk.Label(erow, text="", foreground=GREY, font=(UI_FONT, 9))
+
+        def ext_text(*_):
+            extras = sorted(core.video_exts({"video_extensions_extra": ext_var.get()}) - core.VIDEO_EXT)
+            ext_lbl.configure(text=", ".join(e.lstrip(".") for e in extras) if extras else "—")
+        ttk.Button(erow, text=self.t("st_ext_edit"), style="Square.TButton",
+                   command=lambda: self._ext_dialog(win, ext_var)).pack(side="left")
+        ext_lbl.pack(side="left", padx=(10, 0))
+        ext_var.trace_add("write", ext_text); ext_text()
         ttk.Label(g3, text=self.t("st_log_max")).grid(row=3, column=0, sticky="w", pady=(8, 3))
         log_var = tk.StringVar(value=str(self.cfg.get("log_max_mb", 20)))
         lrow = ttk.Frame(g3); lrow.grid(row=3, column=1, sticky="w", pady=(8, 3), padx=(8, 0))
@@ -1020,8 +1066,11 @@ class App(_Root):
             logfile.setup(self.cfg["log_max_mb"])
             win.destroy()
             apply_theme(self.cfg["theme"])
+            dump = self._log_dump()
             self._style()
             self._build()
+            self._log_restore(dump)
+            style_titlebar(self)
         b = ttk.Frame(outer, style="Bg.TFrame"); b.pack(pady=(2, 0))
         ttk.Button(b, text=self.t("st_save"), command=ok, style="Accent.TButton").pack(side="left", padx=4)
         ttk.Button(b, text=self.t("st_cancel"), command=win.destroy).pack(side="left", padx=4)
@@ -1029,6 +1078,62 @@ class App(_Root):
                         font=(UI_FONT, 8))
         foot.pack(pady=(12, 0))
         foot.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/Cosmopolyte/supersubber"))
+
+    def _ext_dialog(self, parent, ext_var: tk.StringVar) -> None:
+        """Video-Endungen als Liste: die Standard-Endungen fest und grau, eigene hinzufügen und entfernen.
+        Ergebnis landet als „hevc, vp9" in ext_var."""
+        win = tk.Toplevel(parent); win.title(self.t("st_ext_title")); win.resizable(False, False)
+        win.configure(bg=BG); win.transient(parent); win.grab_set()
+        set_icon(win); style_titlebar(win)
+        outer = ttk.Frame(win, padding=14, style="Bg.TFrame"); outer.pack(fill="both", expand=True)
+        card = tk.Frame(outer, bg=CARD); card.pack(fill="both", expand=True)
+        ttk.Label(card, text=self.t("st_ext_hint"), wraplength=330, foreground=GREY,
+                  font=(UI_FONT, 8)).pack(anchor="w", padx=10, pady=(10, 6))
+        defaults = sorted(e.lstrip(".") for e in core.VIDEO_EXT)
+        extras = sorted(e.lstrip(".") for e in core.video_exts({"video_extensions_extra": ext_var.get()}) - core.VIDEO_EXT)
+        lf = ttk.Frame(card); lf.pack(fill="x", padx=10)
+        lb = tk.Listbox(lf, height=10, bg=FIELD, fg=INK, selectbackground=TEAL, selectforeground="white",
+                        highlightthickness=1, highlightbackground=CARD_EDGE, relief="flat", font=(UI_FONT, 10),
+                        activestyle="none", exportselection=False)
+        lsb = ttk.Scrollbar(lf, orient="vertical", command=lb.yview); lb.configure(yscrollcommand=lsb.set)
+        lsb.pack(side="right", fill="y"); lb.pack(side="left", fill="x", expand=True)
+
+        def refill():
+            lb.delete(0, "end")
+            for e in defaults:
+                lb.insert("end", e); lb.itemconfig("end", fg=GREY)
+            for e in extras:
+                lb.insert("end", e)
+        refill()
+        arow = ttk.Frame(card); arow.pack(fill="x", padx=10, pady=(8, 10))
+        new_var = tk.StringVar()
+        ent = ttk.Entry(arow, textvariable=new_var, width=12); ent.pack(side="left")
+
+        def add(*_):
+            e = new_var.get().strip().lstrip(".").lower()
+            if re.fullmatch(r"[a-z0-9]{1,8}", e) and e not in defaults and e not in extras:
+                extras.append(e); extras.sort(); refill()
+            new_var.set("")
+
+        def remove():
+            sel = lb.curselection()
+            if not sel:
+                return
+            e = lb.get(sel[0])
+            if e in extras:
+                extras.remove(e); refill()
+        ent.bind("<Return>", add)
+        ttk.Button(arow, text=self.t("st_ext_add"), style="Square.TButton", command=add).pack(side="left", padx=(6, 0))
+        ttk.Button(arow, text=self.t("st_ext_remove"), style="Square.TButton", command=remove).pack(side="left", padx=(6, 0))
+
+        def ok():
+            ext_var.set(", ".join(extras)); win.destroy()
+        b = ttk.Frame(outer, style="Bg.TFrame"); b.pack(pady=(12, 0))
+        ttk.Button(b, text=self.t("btn_ok"), style="Accent.TButton", command=ok).pack(side="left", padx=4)
+        ttk.Button(b, text=self.t("st_cancel"), command=win.destroy).pack(side="left", padx=4)
+        win.update_idletasks()
+        win.geometry(f"+{parent.winfo_rootx() + 30}+{parent.winfo_rooty() + 60}")
+        ent.focus_set()
 
     def check_updates(self, parent=None, silent: bool = False):
         """Neuestes GitHub-Release abfragen und mit der eigenen Version vergleichen. Kein Auto-Update.
@@ -1055,13 +1160,13 @@ class App(_Root):
         def done(tag, page, err):
             if err:
                 if not silent:
-                    messagebox.showwarning("SuperSubber", self.t("upd_err", err=err), parent=parent)
+                    self._dialog(parent, self.t("upd_err", err=err))
                 return
             if tag and vt(tag) > vt(__version__):
-                if messagebox.askyesno("SuperSubber", self.t("upd_new", new=tag, cur=__version__), parent=parent):
+                if self._dialog(parent, self.t("upd_new", new=tag, cur=__version__), yes_no=True):
                     webbrowser.open(page)
             elif not silent:
-                messagebox.showinfo("SuperSubber", self.t("upd_latest", cur=__version__), parent=parent)
+                self._dialog(parent, self.t("upd_latest", cur=__version__))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -1077,13 +1182,62 @@ class App(_Root):
             self._log_raw("\n" + "─" * 60 + (f"  {title}" if title else ""), ("sep",))
 
     def save_log(self):
-        path = filedialog.asksaveasfilename(defaultextension=".txt", initialfile="supersubber-log.txt",
-                                            filetypes=[("Text", "*.txt"), ("All files", "*.*")])
-        if path:
-            try:
-                Path(path).write_text(self.log.get("1.0", "end-1c"), encoding="utf-8")
-            except OSError as e:
-                messagebox.showwarning("SuperSubber", str(e))
+        """Verlauf (Fenster-Log) in die Zwischenablage — fürs Forum oder eine Mail. Die Logdatei bleibt davon unberührt."""
+        self.clipboard_clear()
+        self.clipboard_append(self.log.get("1.0", "end-1c"))
+        prev = self.status.cget("text")
+        self.status.config(text=self.t("copied"))
+        self.after(2500, lambda: self.status.config(text=prev) if self.status.cget("text") == self.t("copied") else None)
+
+    def _log_dump(self) -> list:
+        """Verlauf mit Formatierung sichern — _build() baut das Text-Widget neu."""
+        try:
+            return self.log.dump("1.0", "end-1c", tag=True, text=True)
+        except (tk.TclError, AttributeError):
+            return []
+
+    def _log_restore(self, dump: list) -> None:
+        if not dump:
+            return
+        self.log.config(state="normal")
+        active: list[str] = []
+        for kind, value, _index in dump:
+            if kind == "tagon":
+                active.append(value)
+            elif kind == "tagoff" and value in active:
+                active.remove(value)
+            elif kind == "text":
+                self.log.insert("end", value, tuple(active))
+        self.log.see("end")
+        self.log.config(state="disabled")
+
+    def _dialog(self, parent, text: str, yes_no: bool = False) -> bool:
+        """Hinweis im eigenen Stil statt messagebox — die passt farblich in kein Schema. Gibt True bei OK/Ja."""
+        win = tk.Toplevel(parent or self); win.title("SuperSubber"); win.resizable(False, False)
+        win.configure(bg=BG); win.transient(parent or self); win.grab_set()
+        set_icon(win); style_titlebar(win)
+        outer = ttk.Frame(win, padding=14, style="Bg.TFrame"); outer.pack(fill="both", expand=True)
+        card = tk.Frame(outer, bg=CARD); card.pack(fill="both", expand=True)
+        tk.Label(card, text=text, bg=CARD, fg=LIGHT, font=(UI_FONT, 10), wraplength=380, justify="left")\
+            .pack(padx=16, pady=14)
+        result = {"ok": False}
+
+        def close(ok: bool):
+            result["ok"] = ok
+            win.destroy()
+        b = ttk.Frame(outer, style="Bg.TFrame"); b.pack(pady=(12, 0))
+        if yes_no:
+            ttk.Button(b, text=self.t("btn_yes"), style="Accent.TButton", command=lambda: close(True)).pack(side="left", padx=4)
+            ttk.Button(b, text=self.t("btn_no"), command=lambda: close(False)).pack(side="left", padx=4)
+        else:
+            ttk.Button(b, text=self.t("btn_ok"), style="Accent.TButton", command=lambda: close(True)).pack()
+        win.bind("<Return>", lambda e: close(True)); win.bind("<Escape>", lambda e: close(False))
+        win.update_idletasks()
+        px, py = (parent or self).winfo_rootx(), (parent or self).winfo_rooty()
+        pw, ph = (parent or self).winfo_width(), (parent or self).winfo_height()
+        win.geometry(f"+{px + max(0, (pw - win.winfo_width()) // 2)}+{py + max(0, (ph - win.winfo_height()) // 3)}")
+        win.wait_window()
+        return result["ok"]
 
     def _log(self, s: str):
         logfile.log.info(s.strip())
