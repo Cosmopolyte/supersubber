@@ -12,6 +12,12 @@ Set-Location $PSScriptRoot
     --hidden-import dogpile.cache.backends.memory `
     run.py 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -match 'ERROR|WARNING: Hidden import|not found|Traceback' }
 if ($LASTEXITCODE -ne 0) { Write-Host "PyInstaller fehlgeschlagen (Exit $LASTEXITCODE)"; exit 1 }
+# PyInstaller 6 stuft die ffmpeg-DLLs aus bin\ als Binaries ein und legt ihre Abhaengigkeiten zusaetzlich nach
+# _internal\ - das verdoppelt ~65 MB. Nur ffmpeg.exe in bin\ braucht sie, Python nie: Duplikate entfernen.
+Get-ChildItem "dist\supersubber\_internal\bin\*.dll" | ForEach-Object {
+    $dup = Join-Path "dist\supersubber\_internal" $_.Name
+    if (Test-Path $dup) { Remove-Item $dup }
+}
 $ver =(Get-Content supersubber\__init__.py | Select-String '__version__ = "(.*)"').Matches[0].Groups[1].Value
 $zip = "dist\supersubber-$ver-win64.zip"
 if (Test-Path $zip) { Remove-Item $zip }
