@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.4.2 — unreleased
+- Settings dialog reordered: app language, OpenSubtitles account, then a Program section with the two checkboxes, the update button and the version. GitHub link at the bottom.
+
 ## 1.4.1 — 2026-09-25
 - Subtitle tracks embedded in the video now count as present: the table shows "embedded" and the language is skipped. A setting turns this off for people who want external files anyway. Forced-only tracks don't count.
 - Subtitle files next to the video are recognized with more name variants: `movie.eng.srt`, `movie.English.srt`, and files without any language tag like `movie.srt`, whose language is detected from the text and noted in the log. Forced files are ignored.

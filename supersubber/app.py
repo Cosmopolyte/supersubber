@@ -893,15 +893,7 @@ class App(_Root):
         f1 = card(self.t("sec_app_lang"))
         ui_box = ttk.Combobox(f1, state="readonly", width=18, values=list(i18n.UI_LANGS.values()))
         ui_box.set(i18n.UI_LANGS.get(self.ui, "English"))
-        ui_box.pack(anchor="w", padx=10, pady=(0, 6))
-        upd_var = tk.BooleanVar(value=bool(self.cfg.get("check_updates_on_start", True)))
-        tk.Checkbutton(f1, text=self.t("st_upd_on_start"), variable=upd_var, bg=CARD, fg=LIGHT, activebackground=CARD,
-                       activeforeground=LIGHT, selectcolor=CARD_EDGE, highlightthickness=0, font=(UI_FONT, 9))\
-            .pack(anchor="w", padx=6, pady=(0, 2))
-        emb_var = tk.BooleanVar(value=bool(self.cfg.get("embedded_counts", True)))
-        tk.Checkbutton(f1, text=self.t("st_embedded"), variable=emb_var, bg=CARD, fg=LIGHT, activebackground=CARD,
-                       activeforeground=LIGHT, selectcolor=CARD_EDGE, highlightthickness=0, font=(UI_FONT, 9))\
-            .pack(anchor="w", padx=6, pady=(0, 8))
+        ui_box.pack(anchor="w", padx=10, pady=(0, 10))
 
         # -- OpenSubtitles-Account
         f2 = card(self.t("sec_account"))
@@ -920,6 +912,23 @@ class App(_Root):
         ttk.Label(g, text=self.t(pw_note), foreground=GREY, wraplength=360,
                   font=(UI_FONT, 8)).grid(row=3, column=0, columnspan=2, sticky="w")
 
+        # -- Programm: Verhalten, Updates, Version
+        f3 = card(self.t("sec_program"))
+
+        def check(var_name: str, key: str, pady) -> tk.BooleanVar:
+            var = tk.BooleanVar(value=bool(self.cfg.get(var_name, True)))
+            tk.Checkbutton(f3, text=self.t(key), variable=var, bg=CARD, fg=LIGHT, activebackground=CARD,
+                           activeforeground=LIGHT, selectcolor=CARD_EDGE, highlightthickness=0, font=(UI_FONT, 9))\
+                .pack(anchor="w", padx=6, pady=pady)
+            return var
+        emb_var = check("embedded_counts", "st_embedded", (0, 2))
+        upd_var = check("check_updates_on_start", "st_upd_on_start", (0, 6))
+        urow = ttk.Frame(f3); urow.pack(fill="x", padx=10, pady=(0, 10))
+        ttk.Button(urow, text=self.t("st_check_updates"), style="Square.TButton",
+                   command=lambda: self.check_updates(win)).pack(side="left")
+        tk.Label(urow, text=f"SuperSubber {__version__}", bg=CARD, fg=LIGHT, font=(UI_FONT, 9))\
+            .pack(side="left", padx=(12, 0))
+
         def ok():
             self.cfg["opensubtitles_user"] = user.get().strip()
             self.cfg["opensubtitles_password"] = config.encrypt(pw.get())
@@ -932,13 +941,10 @@ class App(_Root):
         b = ttk.Frame(outer, style="Bg.TFrame"); b.pack(pady=(2, 0))
         ttk.Button(b, text=self.t("st_save"), command=ok, style="Accent.TButton").pack(side="left", padx=4)
         ttk.Button(b, text=self.t("st_cancel"), command=win.destroy).pack(side="left", padx=4)
-        footrow = ttk.Frame(outer, style="Bg.TFrame"); footrow.pack(fill="x", pady=(12, 0))
-        foot = tk.Label(footrow, text=f"SuperSubber {__version__}  ·  github.com/Cosmopolyte/supersubber",
-                        bg=BG, fg=GREY, cursor="hand2", font=(UI_FONT, 8))
-        foot.pack(side="left")
+        foot = tk.Label(outer, text="github.com/Cosmopolyte/supersubber", bg=BG, fg=GREY, cursor="hand2",
+                        font=(UI_FONT, 8))
+        foot.pack(pady=(12, 0))
         foot.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/Cosmopolyte/supersubber"))
-        ttk.Button(footrow, text=self.t("st_check_updates"), style="Square.TButton",
-                   command=lambda: self.check_updates(win)).pack(side="right")
 
     def check_updates(self, parent=None, silent: bool = False):
         """Neuestes GitHub-Release abfragen und mit der eigenen Version vergleichen. Kein Auto-Update.
