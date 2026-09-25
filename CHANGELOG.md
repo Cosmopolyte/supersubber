@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.2 — unreleased
+## 1.4.2 — 2026-09-25
 - Settings dialog reordered: app language, OpenSubtitles account, then a Program section with the two checkboxes, the update button and the version. GitHub link at the bottom.
 
 ## 1.4.1 — 2026-09-25
