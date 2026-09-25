@@ -29,7 +29,7 @@ Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar. Das Sprachen
 
 ## Einstellungen
 
-Die freien Quellen haben kein festes Tageskontingent; ein optionaler, kostenloser OpenSubtitles.com-Login bringt zusätzlich 20 Downloads pro Tag. Unter Windows wird das Passwort per DPAPI verschlüsselt in `%APPDATA%\supersubber\config.json` abgelegt. Unter Linux landet es im Schlüsselbund des Systems, die Config liegt in `~/.config/supersubber`; ohne Schlüsselbund bleibt das Passwort in einer Datei, die nur der eigene Benutzer lesen kann — der Dialog weist darauf hin. **Auf Updates prüfen** fragt GitHub nach dem neuesten Release — installiert wird nichts automatisch.
+Die freien Quellen haben kein festes Tageskontingent; ein optionaler, kostenloser OpenSubtitles.com-Login bringt zusätzlich 20 Downloads pro Tag. Unter Windows wird das Passwort per DPAPI verschlüsselt in `%APPDATA%\supersubber\config.json` abgelegt. Unter Linux landet es im Schlüsselbund des Systems, die Config liegt in `~/.config/supersubber`; ohne Schlüsselbund bleibt das Passwort in einer Datei, die nur der eigene Benutzer lesen kann — der Dialog weist darauf hin. **Auf Updates prüfen** fragt GitHub nach dem neuesten Release — installiert wird nichts automatisch. Im Bereich **Programm** liegen außerdem das Farbschema (Grün, Hell, Dunkel), eine Liste weiterer Video-Endungen wie `hevc` für umbenannte Container und die Größe der Logdatei. Diese Datei, `supersubber.log` im Config-Ordner, hält jeden Lauf im Detail fest — Kandidaten je Provider mit Score, was geladen wurde und warum, die Sync-Ausgabe. Wenn etwas schiefgeht, steht es dort; **Log-Ordner öffnen** führt hin.
 
 <p align="center"><img src="assets/screenshot-settings.png" alt="Einstellungen" width="380"></p>
 

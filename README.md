@@ -31,7 +31,7 @@ The UI speaks English, German and Russian. The subtitle-language dropdown starts
 
 ## Settings
 
-The free providers have no fixed daily quota; an optional free OpenSubtitles.com login adds 20 downloads per day on top. On Windows the password is stored encrypted with DPAPI in `%APPDATA%\supersubber\config.json`. On Linux it goes into the system keyring and the config lives in `~/.config/supersubber`; without a keyring the password is kept in a file only your user can read, and the dialog says so. **Check for updates** asks GitHub for the latest release — nothing is installed automatically.
+The free providers have no fixed daily quota; an optional free OpenSubtitles.com login adds 20 downloads per day on top. On Windows the password is stored encrypted with DPAPI in `%APPDATA%\supersubber\config.json`. On Linux it goes into the system keyring and the config lives in `~/.config/supersubber`; without a keyring the password is kept in a file only your user can read, and the dialog says so. **Check for updates** asks GitHub for the latest release — nothing is installed automatically. The **Program** section also holds the color theme (green, light, dark), a list of extra video extensions such as `hevc` for renamed containers, and the size of the log file. That file, `supersubber.log` in the config folder, records every run in detail — candidates per provider with scores, what was downloaded and why, the sync output. If something goes wrong, that file tells the story; **Open log folder** takes you there.
 
 <p align="center"><img src="assets/screenshot-settings.png" alt="Settings dialog" width="380"></p>
 
