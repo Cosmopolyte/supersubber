@@ -1,6 +1,9 @@
 # Changelog
 
 ## 1.4.1 — unreleased
+- Subtitle tracks embedded in the video now count as present: the table shows "embedded" and the language is skipped. A setting turns this off for people who want external files anyway. Forced-only tracks don't count.
+- Subtitle files next to the video are recognized with more name variants: `movie.eng.srt`, `movie.English.srt`, and files without any language tag like `movie.srt`, whose language is detected from the text and noted in the log. Forced files are ignored.
+- Tooltips on the folder, languages, settings and save-log buttons and on the IMDb buttons, so the ✕ no longer looks like it removes rows.
 - Settings: "Check for updates on start" checkbox, on by default. The start-up check only speaks up when a newer release exists; the manual button stays.
 - Windows package is a third smaller: PyInstaller had copied the ffmpeg DLLs twice.
 

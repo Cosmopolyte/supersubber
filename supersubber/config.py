@@ -30,6 +30,7 @@ DEFAULTS = {
     "ui_language": "en",                 # Default Englisch; beim ersten Start Systemsprache erkannt
     "window": "",                        # letzte Fenstergeometrie „WxH+X+Y" (leer = nach Bildschirm berechnet)
     "check_updates_on_start": True,      # GitHub-Release-Abfrage beim Start, Hinweis nur bei neuerer Version
+    "embedded_counts": True,             # eingebettete Untertitelspuren gelten als vorhanden
 }
 
 # Windows-Primary-LANGID → ISO-Kürzel, nur für die Default-known_languages relevant

@@ -89,8 +89,99 @@ def count_videos(folder: str, min_size_mb: int, limit: int = 2) -> int:
     return n
 
 
+_SKIP_TOKENS = {"forced", "hi", "sdh", "cc", "default"}   # Zusätze in Sub-Dateinamen, keine Sprachen
+
+
+def _lang_from_token(tok: str) -> str | None:
+    """Sprachkürzel aus einem Dateinamens-Token: en, eng, English, pt-BR … → alpha2 bzw. xx-XX; sonst None."""
+    from babelfish import Language
+    t = tok.strip()
+    if not t or t.lower() in _SKIP_TOKENS:
+        return None
+    for fn in (Language.fromietf, Language.fromalpha3b, Language.fromname):
+        try:
+            lang = fn(t if fn is not Language.fromname else t.capitalize())
+            if lang.alpha3 == "und":
+                return None
+            return lang.alpha2 + (f"-{lang.country.alpha2}" if lang.country else "")
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
+def _detect_language(sub: Path) -> str | None:
+    """Sprache aus dem Text erkennen (charset-normalizer, für Untertitel-Längen zuverlässig)."""
+    try:
+        from babelfish import Language
+        from charset_normalizer import from_path
+        best = from_path(str(sub)).best()
+        name = getattr(best, "language", "") if best else ""
+        if not name or name == "Unknown":
+            return None
+        return Language.fromname(name).alpha2
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def external_subs(video: Path) -> dict[str, tuple[Path, str]]:
+    """Untertitel-Dateien neben dem Video: lang → (Datei, Quelle). Quelle „tag" bei `Film.en.srt`, `Film.eng.srt`,
+    `Film.English.srt`; „detected" bei `Film.srt` ohne Kürzel, dann per Textanalyse. Forced-Subs zählen nicht."""
+    out: dict[str, tuple[Path, str]] = {}
+    stem = video.stem
+    try:
+        entries = list(video.parent.iterdir())
+    except OSError:
+        return out
+    for p in sorted(entries):
+        if p.suffix.lower() not in SUB_EXT or not p.name.startswith(stem):
+            continue
+        rest = p.name[len(stem):-len(p.suffix)]
+        tokens = [t for t in re.split(r"[.\-_ ]+", rest) if t]
+        if any(t.lower() == "forced" for t in tokens):
+            continue
+        lang = next((l for l in (_lang_from_token(t) for t in tokens) if l), None)
+        if lang:
+            out.setdefault(lang, (p, "tag"))
+        elif not tokens:
+            det = _detect_language(p)
+            if det:
+                out.setdefault(det, (p, "detected"))
+            else:
+                out.setdefault("?", (p, "unknown"))
+    return out
+
+
+def embedded_subs(video: Path) -> dict[str, str]:
+    """Eingebettete Untertitelspuren: lang → Codec. Forced-Spuren und Spuren ohne Sprachkennung zählen nicht."""
+    import json
+    from babelfish import Language
+    flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    try:
+        r = subprocess.run([_bin("ffprobe"), "-v", "error", "-select_streams", "s", "-show_entries",
+                            "stream=codec_name,disposition:stream_tags=language,title", "-of", "json", str(video)],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", creationflags=flags)
+        streams = json.loads(r.stdout or "{}").get("streams", [])
+    except (OSError, ValueError):
+        return {}
+    out: dict[str, str] = {}
+    for s in streams:
+        tags = s.get("tags") or {}
+        title = str(tags.get("title", "")).lower()
+        if (s.get("disposition") or {}).get("forced") or "forced" in title:
+            continue
+        code = str(tags.get("language", "")).strip()
+        if not code or code == "und":
+            continue
+        try:
+            lang = Language.fromalpha3b(code).alpha2
+        except Exception:  # noqa: BLE001
+            continue
+        out.setdefault(lang, str(s.get("codec_name", "")))
+    return out
+
+
 def has_sub(video: Path, lang: str) -> bool:
-    return any((video.with_name(f"{video.stem}.{lang}{ext}")).exists() for ext in SUB_EXT)
+    return lang in external_subs(video)
 
 
 def can_write(directory: Path) -> bool:
@@ -310,7 +401,8 @@ class Item:
     min_score: int = 0
     group: str = ""                                   # Release-Gruppe des Rips
     found: dict = field(default_factory=dict)         # lang → True/False (Kandidat über Schwelle)
-    status: dict = field(default_factory=dict)        # lang → present|found|none|synced|suspect|unsynced|missing
+    status: dict = field(default_factory=dict)        # lang → present|embedded|found|none|synced|suspect|unsynced|missing
+    existing: dict = field(default_factory=dict)      # lang → Herkunft: "file", "detected", "embedded"
     error: str | None = None
 
 
@@ -477,14 +569,27 @@ def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: 
                 if not writable[d]:
                     sc.noaccess.append(str(d))
                     log(tr("c_no_write", folder=d.name or str(d)))
+        use_embedded = bool(cfg.get("embedded_counts", True))
         for v in videos:
             if not writable[v.parent]:
                 continue
-            langs = [l for l in languages if not has_sub(v, l)]
-            it = Item(video=v, langs=langs)
+            it = Item(video=v, langs=[])
+            ext = external_subs(v)
+            emb = embedded_subs(v) if use_embedded else {}
+            for lang, (p, how) in ext.items():
+                if how == "detected":
+                    log(tr("c_detected", file=p.name, lang=lang))
+                elif how == "unknown":
+                    log(tr("c_undetected", file=p.name))
             for l in languages:
-                if l not in langs:
+                if l in ext and ext[l][1] != "unknown":
+                    it.existing[l] = ext[l][1] if ext[l][1] == "detected" else "file"
                     it.status[l] = "present"
+                elif l in emb:
+                    it.existing[l] = "embedded"
+                    it.status[l] = "embedded"
+                else:
+                    it.langs.append(l)
             sc.items.append(it)
         todo = [it for it in sc.items if it.langs]
         log(tr("c_found", v=len(videos), t=len(todo), langs=", ".join(languages)))

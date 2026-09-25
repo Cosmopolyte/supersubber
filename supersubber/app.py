@@ -226,6 +226,7 @@ class App(_Root):
         except tk.TclError:
             gear = ttk.Button(gearrow, text="⚙", width=3, style="Gear.TButton", command=self.settings)
         gear.pack(side="right")
+        self._tooltip(gear, self.t("tt_settings"))
 
         # ---- Karte 1: Bedienung
         card1 = tk.Frame(self, bg=CARD)
@@ -234,7 +235,9 @@ class App(_Root):
         ttk.Label(top, text=self.t("folder"), width=LABEL_W).pack(side="left")
         self.folder_var = tk.StringVar(value=getattr(self, "folder_var", None) and self.folder_var.get() or self._pending_folder)
         # Wählen-Knopf VOR dem Pfadfeld — das Feld darf beliebig breit werden, der Knopf bleibt sichtbar
-        ttk.Button(top, text="…", width=4, style="Square.TButton", command=self.browse).pack(side="left", fill="y", padx=(0, 6))
+        browse = ttk.Button(top, text="…", width=4, style="Square.TButton", command=self.browse)
+        browse.pack(side="left", fill="y", padx=(0, 6))
+        self._tooltip(browse, self.t("tt_browse"))
         fe = ttk.Entry(top, textvariable=self.folder_var)
         fe.pack(side="left", fill="x", expand=True)
         fe.bind("<Return>", lambda e: self._trigger_scan())
@@ -254,8 +257,9 @@ class App(_Root):
         self.lang_sel: dict[str, tk.BooleanVar] = {}
         self.lang_btn = ttk.Menubutton(row, direction="below")
         self.lang_btn.pack(side="left")
-        ttk.Button(row, text=self.t("btn_langs"), style="Square.TButton",
-                   command=self.lang_picker).pack(side="left", padx=(6, 0))
+        langs_btn = ttk.Button(row, text=self.t("btn_langs"), style="Square.TButton", command=self.lang_picker)
+        langs_btn.pack(side="left", padx=(6, 0))
+        self._tooltip(langs_btn, self.t("tt_langs"))
         self._build_lang_menu()
 
         # ---- Karte 2: Vorlauf-Tabelle — Datei · Erkannt als · eine Spalte je Sprache · IMDb; Start darunter
@@ -314,7 +318,9 @@ class App(_Root):
         sb.pack(side="right", fill="y")
         self.log.pack(side="left", fill="both", expand=True)
         lfoot = ttk.Frame(sec); lfoot.pack(fill="x", padx=10, pady=(0, 10))
-        ttk.Button(lfoot, text=self.t("save_log"), style="Square.TButton", command=self.save_log).pack(side="right")
+        save_btn = ttk.Button(lfoot, text=self.t("save_log"), style="Square.TButton", command=self.save_log)
+        save_btn.pack(side="right")
+        self._tooltip(save_btn, self.t("tt_save_log"))
 
     def _set_result(self, text: str, fg: str = ""):
         self.status.config(text=text)
@@ -484,7 +490,7 @@ class App(_Root):
                 self.start()
 
     # ---- Tabelle -------------------------------------------------------------
-    _SYM = {"present": "✔", "found": "✔", "synced": "✔", "suspect": "⚠", "unsynced": "⚠",
+    _SYM = {"present": "✔", "embedded": "✔", "found": "✔", "synced": "✔", "suspect": "⚠", "unsynced": "⚠",
             "none": "✖", "missing": "✖", "pending": "…"}
 
     def _setup_columns(self, langs: list[str]):
@@ -552,6 +558,8 @@ class App(_Root):
                 b1 = ttk.Button(self.table, style="Cell.TButton", command=lambda it=it: self._imdb_popup(it))
                 b2 = ttk.Button(self.table, text="✕", style="Cell.TButton", width=2,
                                 command=lambda it=it: self._clear_imdb(it))
+                self._tooltip(b1, lambda it=it: self.t("tt_imdb_edit" if it.imdb_id else "tt_imdb_set"))
+                self._tooltip(b2, self.t("tt_imdb_clear"))
                 self._imdb_btns[iid] = (b1, b2)
             b1, b2 = self._imdb_btns[iid]
             if not bbox:
@@ -603,6 +611,22 @@ class App(_Root):
             self._tip.destroy()
             self._tip = None
         self._tip_cell = None
+
+    def _tooltip(self, widget, text) -> None:
+        """Hinweis beim Verweilen auf einem Widget; text darf auch eine Funktion sein, die den Text liefert."""
+        def show(event):
+            self._tip_hide()
+            s = text() if callable(text) else text
+            if not s:
+                return
+            self._tip = tk.Toplevel(self)
+            self._tip.wm_overrideredirect(True)
+            tk.Label(self._tip, text=s, bg="#fffbe6", fg=INK, relief="solid", borderwidth=1,
+                     font=(UI_FONT, 9), padx=6, pady=3).pack()
+            self._tip.wm_geometry(f"+{event.x_root + 14}+{event.y_root + 18}")
+        widget.bind("<Enter>", show, add="+")
+        widget.bind("<Leave>", self._tip_hide, add="+")
+        widget.bind("<ButtonPress>", self._tip_hide, add="+")
 
     def _imdb_popup(self, it: core.Item):
         """IMDb-ID für genau diese Zeile; bei Serien optional für alle Folgen derselben Serie."""
@@ -873,6 +897,10 @@ class App(_Root):
         upd_var = tk.BooleanVar(value=bool(self.cfg.get("check_updates_on_start", True)))
         tk.Checkbutton(f1, text=self.t("st_upd_on_start"), variable=upd_var, bg=CARD, fg=LIGHT, activebackground=CARD,
                        activeforeground=LIGHT, selectcolor=CARD_EDGE, highlightthickness=0, font=(UI_FONT, 9))\
+            .pack(anchor="w", padx=6, pady=(0, 2))
+        emb_var = tk.BooleanVar(value=bool(self.cfg.get("embedded_counts", True)))
+        tk.Checkbutton(f1, text=self.t("st_embedded"), variable=emb_var, bg=CARD, fg=LIGHT, activebackground=CARD,
+                       activeforeground=LIGHT, selectcolor=CARD_EDGE, highlightthickness=0, font=(UI_FONT, 9))\
             .pack(anchor="w", padx=6, pady=(0, 8))
 
         # -- OpenSubtitles-Account
@@ -897,6 +925,7 @@ class App(_Root):
             self.cfg["opensubtitles_password"] = config.encrypt(pw.get())
             self.cfg["ui_language"] = next((c for c, n in i18n.UI_LANGS.items() if n == ui_box.get()), "en")
             self.cfg["check_updates_on_start"] = bool(upd_var.get())
+            self.cfg["embedded_counts"] = bool(emb_var.get())
             config.save(self.cfg)
             win.destroy()
             self._build()
