@@ -49,8 +49,15 @@ def setup(max_mb: float) -> None:
                   exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
     sys.excepthook = excepthook
     threading.excepthook = thread_hook
-    log.info("SuperSubber %s start on %s %s, Python %s, config %s",
-             __version__, platform.system(), platform.release(), platform.python_version(), config.CONFIG_DIR)
+    # Build-Stempel: zwei Builds derselben Version unterscheiden sich sonst im Log nicht
+    exe = sys.executable if getattr(sys, "frozen", False) else os.path.join(os.path.dirname(__file__), "app.py")
+    try:
+        import datetime
+        built = datetime.datetime.fromtimestamp(os.path.getmtime(exe)).strftime("%Y-%m-%d %H:%M")
+    except OSError:
+        built = "?"
+    log.info("SuperSubber %s (build %s, %s) start on %s %s, Python %s, config %s", __version__, built, exe,
+             platform.system(), platform.release(), platform.python_version(), config.CONFIG_DIR)
 
 
 def open_folder() -> None:
