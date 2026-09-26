@@ -455,6 +455,26 @@ def _recognized(v) -> str:
 ID_PROVIDERS = {"opensubtitles", "opensubtitlescom"}   # suchen bei gesetzter IMDb-ID gezielt nach dieser ID
 
 
+def _imdb_num(x) -> int | None:
+    m = re.search(r"(\d+)", str(x or ""))
+    return int(m.group(1)) if m else None
+
+
+def _id_match(sub, imdb_id: str, episode: bool) -> bool:
+    """Stammt dieser Treffer wirklich von der IMDb-ID? Die ID-Provider mischen ID-Suche und Namenssuche —
+    „The Whispers S01E06 The Archer" kam bei Archer S01E06 aus der Namenssuche (Testkees, 2026-09-26).
+    .org markiert ID-Treffer mit matched_by=imdbid; .com trägt movie_imdb_id bzw. series_imdb_id."""
+    want = _imdb_num(imdb_id)
+    if sub.provider_name == "opensubtitles":
+        if getattr(sub, "matched_by", "") == "imdbid":
+            return True
+        return not episode and _imdb_num(getattr(sub, "movie_imdb_id", None)) == want
+    if sub.provider_name == "opensubtitlescom":
+        field = "series_imdb_id" if episode else "movie_imdb_id"
+        return _imdb_num(getattr(sub, field, None)) == want
+    return False
+
+
 def _score_fn(v, imdb_id: str | None = None):
     """Bewertung wie subliminal, plus Bonus für die Release-Gruppe des Rips (…-SHORTBREHD im
     Sub-Release-Namen → für exakt diesen Schnitt getimt). Bonus < Jahr-Gewicht, hebt also keinen
@@ -470,7 +490,7 @@ def _score_fn(v, imdb_id: str | None = None):
         rel = str(getattr(sub, "release", None) or getattr(sub, "info", None) or "").lower()
         if group and len(group) >= 3 and group in rel:
             s_ += RELEASE_GROUP_BONUS
-        if imdb_id and sub.provider_name in ID_PROVIDERS:
+        if imdb_id and sub.provider_name in ID_PROVIDERS and _id_match(sub, imdb_id, isinstance(vid, Episode)):
             matches = sub.get_matches(vid)
             if "hash" in matches:
                 return s_
@@ -565,7 +585,8 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
         if it.imdb_id:
             # mit ID zählt, was die Provider zur ID sagen — nicht der aus dem Pfad geratene Titel
             se = _se(v) if isinstance(v, Episode) else ""
-            title = _title_from_candidates(it.candidates, isinstance(v, Episode)) or f"IMDb {it.imdb_id}"
+            by_id = [s for s in it.candidates if _id_match(s, it.imdb_id, isinstance(v, Episode))]
+            title = _title_from_candidates(by_id, isinstance(v, Episode)) or f"IMDb {it.imdb_id}"
             it.recognized = " · ".join(x for x in (title, se) if x)
             if manual_id and not it.recognized.startswith("IMDb "):
                 it.recognized += f" · IMDb {manual_id}"
