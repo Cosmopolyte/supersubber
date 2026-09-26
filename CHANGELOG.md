@@ -1,7 +1,7 @@
 # Changelog
 
 ## 1.5.2 — unreleased
-- Videos that already have every requested language are hidden from the table by default; a checkbox below the table shows them again. The summary line still counts them.
+- Checkbox below the table to hide videos that already have every requested language, useful for big shows. Shown by default; the summary line counts them either way.
 
 ## 1.5.1 — 2026-09-26
 - Layout follows the font size: table rows, the drop zone and the language columns scale with the system font, so nothing overlaps or gets cut on high-DPI screens.

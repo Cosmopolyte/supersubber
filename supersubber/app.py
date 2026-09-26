@@ -397,7 +397,7 @@ class App(_Root):
         self.start_btn.pack(side="right")
         self.start_btn.state(["disabled"])       # erst nach dem Vorlauf
         # Zeilen, bei denen alle Sprachen schon da sind, tragen keine Aktion — bei 500 Folgen nur Ballast
-        self.show_present = tk.BooleanVar(value=bool(self.cfg.get("show_present", False)))
+        self.show_present = tk.BooleanVar(value=bool(self.cfg.get("show_present", True)))
         tk.Checkbutton(foot, text=self.t("show_present"), variable=self.show_present, bg=CARD, fg=LIGHT,
                        activebackground=CARD, activeforeground=LIGHT, selectcolor=CHECK_BG, highlightthickness=0,
                        font=(UI_FONT, 9), command=self._toggle_present).pack(side="left")
