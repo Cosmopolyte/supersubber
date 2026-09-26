@@ -1022,7 +1022,13 @@ class App(_Root):
         ui_box.pack(anchor="w", padx=10, pady=(0, 10))
 
         # -- OpenSubtitles-Account
-        f2 = card(self.t("sec_account"))
+        f2 = card(self.t("sec_sources"))
+        prow = ttk.Frame(f2); prow.pack(fill="x", padx=10, pady=(0, 10))
+        ttk.Button(prow, text=self.t("st_providers"), style="Square.TButton",
+                   command=lambda: self._providers_dialog(win)).pack(side="left")
+        ttk.Label(prow, text=self.t("pv_intro"), foreground=GREY, font=(UI_FONT, 8), wraplength=250,
+                  justify="left").pack(side="left", padx=(10, 0))
+        tk.Label(f2, text=self.t("sec_account"), bg=CARD, fg=LIGHT, font=(UI_FONT, 9, "bold"))            .pack(anchor="w", padx=10, pady=(0, 2))
         g = ttk.Frame(f2); g.pack(fill="x", padx=10, pady=(0, 10))
         ttk.Label(g, text=self.t("st_user")).grid(row=0, column=0, sticky="w", pady=3)
         user = tk.StringVar(value=self.cfg["opensubtitles_user"])
@@ -1068,8 +1074,6 @@ class App(_Root):
         urow = ttk.Frame(f3); urow.pack(fill="x", padx=10, pady=(4, 10))
         ttk.Button(urow, text=self.t("st_check_updates"), style="Square.TButton",
                    command=lambda: self.check_updates(win)).pack(side="left")
-        ttk.Button(urow, text=self.t("st_providers"), style="Square.TButton",
-                   command=lambda: self._providers_dialog(win)).pack(side="left", padx=(8, 0))
         tk.Label(urow, text=f"SuperSubber {__version__}", bg=CARD, fg=LIGHT, font=(UI_FONT, 9))\
             .pack(side="left", padx=(12, 0))
 

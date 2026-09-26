@@ -18,7 +18,9 @@ _LOG = logging.getLogger("supersubber.core")   # Details für die Logdatei, nich
 VIDEO_EXT = frozenset({".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv"})
 SUB_EXT = (".srt", ".ass", ".ssa")
 # Provider ohne Zugangsdaten; opensubtitlescom kommt dazu, sobald ein Login konfiguriert ist
-BASE_PROVIDERS = ["gestdown", "tvsubtitles", "bsplayer", "opensubtitles"]   # podnapisi seit März 2026 tot
+# podnapisi seit März 2026 tot; napiprojekt (pl), subtitulamos (es/en, Serien) und subtis (es, Filme) kosten nichts —
+# subliminal fragt einen Provider nur, wenn er eine der gewählten Sprachen führt
+BASE_PROVIDERS = ["gestdown", "tvsubtitles", "bsplayer", "opensubtitles", "napiprojekt", "subtitulamos", "subtis"]
 LOGIN_PROVIDERS = ["opensubtitlescom"]                                       # nur mit Zugangsdaten
 # Host + Port, den jeder Provider anspricht — für die Erreichbarkeitsprüfung
 PROVIDER_HOSTS = {
@@ -27,10 +29,14 @@ PROVIDER_HOSTS = {
     "gestdown": ("api.gestdown.info", 443),
     "tvsubtitles": ("www.tvsubtitles.net", 443),
     "bsplayer": ("s1.api.bsplayer-subtitles.com", 80),
+    "napiprojekt": ("napiprojekt.pl", 443),
+    "subtitulamos": ("www.subtitulamos.tv", 443),
+    "subtis": ("api.subt.is", 443),
 }
 PROVIDER_ALT_HOSTS = {"bsplayer": ["s3.api.bsplayer-subtitles.com", "s102.api.bsplayer-subtitles.com"]}  # Provider würfelt Subdomains
 PROVIDER_LABELS = {"opensubtitles": "OpenSubtitles.org", "opensubtitlescom": "OpenSubtitles.com",
-                   "gestdown": "Gestdown (Addic7ed)", "tvsubtitles": "TVsubtitles", "bsplayer": "BSplayer"}
+                   "gestdown": "Gestdown (Addic7ed)", "tvsubtitles": "TVsubtitles", "bsplayer": "BSplayer",
+                   "napiprojekt": "NapiProjekt (pl)", "subtitulamos": "Subtitulamos (es)", "subtis": "Subtis (es)"}
 PROBE_TTL = 600           # Sekunden, die ein Prüfergebnis gilt
 _probe_cache: dict = {"time": 0.0, "status": {}}
 _probe_lock = threading.Lock()
