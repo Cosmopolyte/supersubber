@@ -396,6 +396,11 @@ class App(_Root):
         self.start_btn = ttk.Button(foot, text=self.t("start"), command=self.start, width=12, style="Accent.TButton")
         self.start_btn.pack(side="right")
         self.start_btn.state(["disabled"])       # erst nach dem Vorlauf
+        # Zeilen, bei denen alle Sprachen schon da sind, tragen keine Aktion — bei 500 Folgen nur Ballast
+        self.show_present = tk.BooleanVar(value=bool(self.cfg.get("show_present", False)))
+        tk.Checkbutton(foot, text=self.t("show_present"), variable=self.show_present, bg=CARD, fg=LIGHT,
+                       activebackground=CARD, activeforeground=LIGHT, selectcolor=CHECK_BG, highlightthickness=0,
+                       font=(UI_FONT, 9), command=self._toggle_present).pack(side="left")
         # ---- Karte 3: Balken, Statuszeile, Ergebnis, Log (ohne Titel)
         sec = tk.Frame(self, bg=CARD)
         sec.pack(fill="both", expand=True, padx=10, pady=(14, 20))
@@ -636,12 +641,18 @@ class App(_Root):
             tag = "ok"
         return vals, tag
 
+    def _toggle_present(self):
+        self.cfg["show_present"] = bool(self.show_present.get())
+        config.save(self.cfg)
+        self._fill_table()
+
     def _fill_table(self):
         self.table.delete(*self.table.get_children())
         self._row_items = {}
         if not self.scan:
             return
-        for i, it in enumerate(self.scan.items):
+        items = self.scan.items if self.show_present.get() else [it for it in self.scan.items if it.langs]
+        for i, it in enumerate(items):
             vals, tag = self._row_values(it)
             iid = self.table.insert("", "end", values=vals, tags=(tag, "odd" if i % 2 else "even"))
             self._row_items[iid] = it

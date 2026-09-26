@@ -34,6 +34,7 @@ DEFAULTS = {
     "video_extensions_extra": "",        # zusätzliche Video-Endungen, z. B. „hevc, vp9"
     "log_max_mb": 20,                    # Obergrenze der Logdatei im Config-Ordner
     "theme": "green",                    # Farbschema: green | light | dark
+    "show_present": False,               # Tabelle: auch Videos zeigen, die alle Sprachen schon haben
 }
 
 # Windows-Primary-LANGID → ISO-Kürzel, nur für die Default-known_languages relevant
