@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.5.4 — unreleased
+- History and log: Gestdown hits are named `Show S01E03 · Episode title · release` instead of the run-together `Show s01e03Episode title` that subliminal produces.
+
 ## 1.5.3 — 2026-09-26
 - Providers are checked for reachability at start and before every search; a dead provider is skipped with one line in the history instead of a timeout per video. Podnapisi is gone from the default list, the site has been offline since March 2026.
 - Providers dialog in the settings: which sources are used, whether they are reachable right now, and a checkbox to leave one out. The OpenSubtitles.com login moved into the same Sources section.

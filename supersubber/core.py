@@ -581,6 +581,16 @@ def _score_fn(v, imdb_id: str | None = None):
     return score
 
 
+def _release_name(s) -> str:
+    """Lesbarer Name eines Treffers fürs Log. gestdown klebt in subliminal 2.7.1 den Episodentitel ohne
+    Leerzeichen an „s01e03" (Testkees, 2026-09-26) — dort selbst zusammensetzen."""
+    if s.provider_name == "gestdown":
+        parts = [f"{getattr(s, 'series', '')} S{int(getattr(s, 'season', 0) or 0):02d}E{int(getattr(s, 'episode', 0) or 0):02d}".strip()]
+        parts += [str(x) for x in (getattr(s, "title", None), getattr(s, "release_group", None)) if x]
+        return " · ".join(parts)
+    return str(getattr(s, "release", None) or getattr(s, "info", None) or s.id)
+
+
 def _title_from_candidates(cands: list, episode: bool) -> str:
     """Titel aus den Provider-Treffern (häufigster Wert) — die kennen den Film/die Serie zur IMDb-ID.
     opensubtitlescom: series_title/movie_title; opensubtitles: movie_name („\"MobLand\" Stick or Twist");
@@ -673,8 +683,7 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
                    it.imdb_source or "-", it.min_score, len(it.candidates))
         for s in sorted(it.candidates, key=lambda s: -score(s, v)):
             _LOG.debug("  cand %s %s id=%s score=%d matches=%s release=%r", s.provider_name, s.language,
-                       s.id, score(s, v), sorted(s.get_matches(v)),
-                       getattr(s, "release", None) or getattr(s, "info", None) or "")
+                       s.id, score(s, v), sorted(s.get_matches(v)), _release_name(s))
         for lang in it.langs:
             L = Language.fromietf(lang)
             best = max((score(s, v) for s in it.candidates if s.language == L), default=0)
@@ -810,7 +819,7 @@ def _download_item(pool, it: Item, tmp: Path, log: Log, tr: Tr) -> dict:
                     ignore.append(s.id)
                     p.unlink(missing_ok=True)
                     continue
-                rel = getattr(s, "release", None) or getattr(s, "info", None) or s.id
+                rel = _release_name(s)
                 log(tr("c_got", lang=s.language.alpha2, rel=rel, prov=s.provider_name))
                 _LOG.info("%s: downloaded %s from %s id=%s score=%d cues=%d release=%r", it.video.name,
                           s.language, s.provider_name, s.id, score(s, v), cues, rel)
