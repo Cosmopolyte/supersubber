@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.5.1 — unreleased
+## 1.5.1 — 2026-09-26
 - Layout follows the font size: table rows, the drop zone and the language columns scale with the system font, so nothing overlaps or gets cut on high-DPI screens.
 - The table grows with the window instead of staying at eight rows; the log shares the remaining space.
 - Double episodes such as `S04E10E11` are shown with both numbers.
