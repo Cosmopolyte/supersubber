@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.5.2 — unreleased
+## 1.5.2 — 2026-09-26
 - Fix: with an IMDb ID set, subtitles of a different show could slip through when its episode title contained the show's name — Archer S01E06 got "The Whispers: The Archer". The ID bonus now applies only to hits that really carry that ID.
 - Checkbox below the table to hide videos that already have every requested language, useful for big shows. Shown by default; the summary line counts them either way.
 
