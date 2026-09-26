@@ -218,7 +218,7 @@ class App(_Root):
         fit = not m or int(m.group(3)) > sw - 200 or int(m.group(4)) > sh - 200
         if not fit:
             self.geometry(geo)
-        self.minsize(640, 700)
+        self.minsize(640, 620)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         set_icon(self, default=True)
         style_titlebar(self)
@@ -309,8 +309,9 @@ class App(_Root):
                   arrowcolor=[("disabled", GREY)])
         self.option_add("*TCombobox*Listbox.background", FIELD)
         self.option_add("*TCombobox*Listbox.foreground", INK)
+        row_h = tkfont.Font(font=(UI_FONT, 9)).metrics("linespace") + 8   # statt fest 22: bei großer Schrift überlappten Zeilen
         s.configure("Treeview", background=FIELD, fieldbackground=FIELD, foreground=INK,
-                    rowheight=22, font=(UI_FONT, 9), bordercolor=BORDER)
+                    rowheight=row_h, font=(UI_FONT, 9), bordercolor=BORDER)
         s.configure("Treeview.Heading", background=HEAD, foreground=INK, font=(UI_FONT, 9, "bold"),
                     relief="solid", borderwidth=1, bordercolor=HEAD_EDGE, padding=(6, 3))
         s.map("Treeview", background=[("selected", TEAL)], foreground=[("selected", "white")])
@@ -347,7 +348,8 @@ class App(_Root):
         fe.pack(side="left", fill="x", expand=True)
         fe.bind("<Return>", lambda e: self._trigger_scan())
 
-        self.drop = tk.Canvas(card1, height=130, bg=CARD, highlightthickness=0, cursor="hand2")
+        drop_h = tkfont.Font(font=(UI_FONT, 11, "bold")).metrics("linespace") * 2 + 64   # Pfeil + zwei Zeilen
+        self.drop = tk.Canvas(card1, height=drop_h, bg=CARD, highlightthickness=0, cursor="hand2")
         self.drop.pack(fill="x", padx=10, pady=(6, 12))
         self.drop.bind("<Configure>", self._draw_drop)
         self.drop.bind("<Button-1>", lambda e: self.browse())
@@ -369,9 +371,9 @@ class App(_Root):
 
         # ---- Karte 2: Vorlauf-Tabelle — Datei · Erkannt als · eine Spalte je Sprache · IMDb; Start darunter
         tcard = tk.Frame(self, bg=CARD)
-        tcard.pack(fill="x", padx=10, pady=(14, 0))
-        tf = ttk.Frame(tcard); tf.pack(fill="x", padx=10, pady=(10, 6))
-        self.table = ttk.Treeview(tf, columns=("file",), show="headings", height=8, selectmode="browse")
+        tcard.pack(fill="both", expand=True, padx=10, pady=(14, 0))
+        tf = ttk.Frame(tcard); tf.pack(fill="both", expand=True, padx=10, pady=(10, 6))
+        self.table = ttk.Treeview(tf, columns=("file",), show="headings", height=6, selectmode="browse")
         self.table.tag_configure("none", foreground=ROW_NONE)
         self.table.tag_configure("present", foreground=ROW_PRESENT)
         self.table.tag_configure("ok", foreground=INK)
@@ -385,7 +387,7 @@ class App(_Root):
         self.table.configure(yscrollcommand=lambda *a: (tsb.set(*a), self._place_imdb_buttons()))
         self.table.bind("<Configure>", lambda e: self.after_idle(self._place_imdb_buttons))
         tsb.pack(side="right", fill="y")
-        self.table.pack(side="left", fill="x", expand=True)
+        self.table.pack(side="left", fill="both", expand=True)
         self._row_items: dict[str, core.Item] = {}
         self._imdb_btns: dict[str, tuple] = {}
         self._table_langs = []
@@ -409,7 +411,7 @@ class App(_Root):
 
         self._logf = ttk.Frame(sec)
         self._logf.pack(fill="both", expand=True, padx=10, pady=(4, 6))
-        self.log = tk.Text(self._logf, height=9, state="disabled", font=("Consolas", 9), wrap="word",
+        self.log = tk.Text(self._logf, height=7, state="disabled", font=("Consolas", 9), wrap="word",
                            relief="flat", highlightthickness=1, highlightbackground=CARD_EDGE,
                            bg=IDLE_BG, fg=INK)
         sb = ttk.Scrollbar(self._logf, orient="vertical", command=self.log.yview)
@@ -439,10 +441,10 @@ class App(_Root):
         y0, y1 = 2, h - 2
         c.create_rectangle(x0, y0, x1, y1, fill=FIELD, width=0)
         c.create_rectangle(x0 + 12, y0 + 10, x1 - 12, y1 - 10, dash=(7, 4), outline=TEAL, width=2)
-        cx, cy = w // 2, h // 2 - 26
+        cx, cy = w // 2, h // 2 - int(h * 0.2)
         c.create_rectangle(cx - 4, cy - 9, cx + 4, cy + 4, fill=DROP_FG, width=0)
         c.create_polygon(cx - 10, cy + 4, cx + 10, cy + 4, cx, cy + 15, fill=DROP_FG, width=0)
-        c.create_text(cx, h // 2 + 22, text=self.t("drop_main"), font=(UI_FONT, 11, "bold"),
+        c.create_text(cx, h // 2 + int(h * 0.17), text=self.t("drop_main"), font=(UI_FONT, 11, "bold"),
                       fill=DROP_FG, justify="center")
 
     def _build_lang_menu(self):
@@ -612,9 +614,11 @@ class App(_Root):
         self.table.column("file", width=220, minwidth=80, stretch=True, anchor="w")
         self.table.heading("rec", text=self.t("col_rec"), anchor="w")
         self.table.column("rec", width=170, minwidth=80, stretch=True, anchor="w")
+        f9 = tkfont.Font(font=(UI_FONT, 9))
+        lang_w = max(f9.measure(f"{sym} {self.t('s_' + st)}") for st, sym in self._SYM.items() if st != "pending") + 28
         for l in langs:
             self.table.heading(f"l_{l}", text=i18n.lang_name_ui(self.ui, l), anchor="w")
-            self.table.column(f"l_{l}", width=115, minwidth=70, stretch=False, anchor="w")
+            self.table.column(f"l_{l}", width=max(115, lang_w), minwidth=70, stretch=False, anchor="w")
         self.table.heading("imdb", text=self.t("col_imdb"), anchor="w")
         self.table.column("imdb", width=175, minwidth=120, stretch=False, anchor="w")
 

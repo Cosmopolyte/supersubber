@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.1 — unreleased
+- Layout follows the font size: table rows, the drop zone and the language columns scale with the system font, so nothing overlaps or gets cut on high-DPI screens.
+- The table grows with the window instead of staying at eight rows; the log shares the remaining space.
+- Double episodes such as `S04E10E11` are shown with both numbers.
+
 ## 1.5.0 — 2026-09-26
 - Log file: everything the window shows plus the details behind it — candidates per provider with scores, the subtitle that was chosen and why, IMDb lookups, alass output, crashes. Rotating, capped at 20 MB by default, size and an "Open log folder" button in the settings. When something goes wrong, send that file.
 - More video extensions: a list in the settings for extensions beyond mkv, mp4, avi, m4v, mov and wmv, e.g. hevc or vp9 for renamed containers.

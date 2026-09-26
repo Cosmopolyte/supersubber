@@ -436,11 +436,18 @@ class Scan:
         return [it for it in self.items if any(it.found.get(l) for l in it.langs)]
 
 
+def _se(v) -> str:
+    """„S04E10", bei Doppelfolgen „S04E10E11" — guessit liefert die Nummern als Liste."""
+    if getattr(v, "season", None) is None or getattr(v, "episode", None) is None:
+        return ""
+    eps = getattr(v, "episodes", None) or [v.episode]
+    return f"S{v.season:02d}" + "".join(f"E{e:02d}" for e in eps)
+
+
 def _recognized(v) -> str:
     from subliminal.video import Episode
     if isinstance(v, Episode):
-        se = f"S{v.season:02d}E{v.episode:02d}" if v.season is not None and v.episode is not None else ""
-        return " · ".join(x for x in (v.series, se) if x)
+        return " · ".join(x for x in (v.series, _se(v)) if x)
     year = getattr(v, "year", None)
     return " · ".join(x for x in (getattr(v, "title", None), str(year) if year else "") if x)
 
@@ -557,8 +564,7 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
         it.candidates = list(pool.list_subtitles(v, want))
         if it.imdb_id:
             # mit ID zählt, was die Provider zur ID sagen — nicht der aus dem Pfad geratene Titel
-            se = f"S{v.season:02d}E{v.episode:02d}" if isinstance(v, Episode) and v.season is not None \
-                and v.episode is not None else ""
+            se = _se(v) if isinstance(v, Episode) else ""
             title = _title_from_candidates(it.candidates, isinstance(v, Episode)) or f"IMDb {it.imdb_id}"
             it.recognized = " · ".join(x for x in (title, se) if x)
             if manual_id and not it.recognized.startswith("IMDb "):
