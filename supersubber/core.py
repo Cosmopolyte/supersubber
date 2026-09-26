@@ -18,7 +18,71 @@ _LOG = logging.getLogger("supersubber.core")   # Details für die Logdatei, nich
 VIDEO_EXT = frozenset({".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv"})
 SUB_EXT = (".srt", ".ass", ".ssa")
 # Provider ohne Zugangsdaten; opensubtitlescom kommt dazu, sobald ein Login konfiguriert ist
-BASE_PROVIDERS = ["podnapisi", "gestdown", "tvsubtitles", "bsplayer", "opensubtitles"]
+BASE_PROVIDERS = ["gestdown", "tvsubtitles", "bsplayer", "opensubtitles"]   # podnapisi seit März 2026 tot
+LOGIN_PROVIDERS = ["opensubtitlescom"]                                       # nur mit Zugangsdaten
+# Host + Port, den jeder Provider anspricht — für die Erreichbarkeitsprüfung
+PROVIDER_HOSTS = {
+    "opensubtitles": ("api.opensubtitles.org", 443),
+    "opensubtitlescom": ("api.opensubtitles.com", 443),
+    "gestdown": ("api.gestdown.info", 443),
+    "tvsubtitles": ("www.tvsubtitles.net", 443),
+    "bsplayer": ("s1.api.bsplayer-subtitles.com", 80),
+}
+PROVIDER_ALT_HOSTS = {"bsplayer": ["s3.api.bsplayer-subtitles.com", "s102.api.bsplayer-subtitles.com"]}  # Provider würfelt Subdomains
+PROVIDER_LABELS = {"opensubtitles": "OpenSubtitles.org", "opensubtitlescom": "OpenSubtitles.com",
+                   "gestdown": "Gestdown (Addic7ed)", "tvsubtitles": "TVsubtitles", "bsplayer": "BSplayer"}
+PROBE_TTL = 600           # Sekunden, die ein Prüfergebnis gilt
+_probe_cache: dict = {"time": 0.0, "status": {}}
+_probe_lock = threading.Lock()
+
+
+def probe_providers(timeout: float = 4.0) -> dict[str, tuple[bool, str]]:
+    """Erreichbarkeit aller bekannten Provider parallel prüfen: DNS + TCP-Verbindung. Ergebnis
+    name → (erreichbar, Detail) und im Cache abgelegt; ein toter Provider kostet sonst je Video die Timeouts."""
+    import socket
+    import time as _time
+    result: dict[str, tuple[bool, str]] = {}
+
+    def check(name: str, host: str, port: int) -> None:
+        last = "no address"
+        for h in [host] + PROVIDER_ALT_HOSTS.get(name, []):
+            try:
+                infos = socket.getaddrinfo(h, port, type=socket.SOCK_STREAM)
+            except socket.gaierror as e:
+                last = f"DNS: {e.strerror or e}"
+                continue
+            for family, stype, proto, _, addr in infos[:2]:
+                try:
+                    with socket.socket(family, stype, proto) as s:
+                        s.settimeout(timeout)
+                        s.connect(addr)
+                    result[name] = (True, addr[0])
+                    return
+                except OSError as e:
+                    last = f"connect: {e.strerror or e}"
+        result[name] = (False, last)
+
+    threads = [threading.Thread(target=check, args=(n, h, p), daemon=True) for n, (h, p) in PROVIDER_HOSTS.items()]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout + 1)
+    for n in PROVIDER_HOSTS:
+        result.setdefault(n, (False, "timeout"))
+    with _probe_lock:
+        _probe_cache["time"] = _time.time()
+        _probe_cache["status"] = dict(result)
+    _LOG.info("provider probe: %s", {k: ("ok" if v[0] else v[1]) for k, v in result.items()})
+    return result
+
+
+def provider_status(max_age: float = PROBE_TTL) -> dict[str, tuple[bool, str]]:
+    """Letztes Prüfergebnis; älter als max_age → neu prüfen (dauert höchstens ein paar Sekunden)."""
+    import time as _time
+    with _probe_lock:
+        fresh = _probe_cache["status"] and _time.time() - _probe_cache["time"] < max_age
+        status = dict(_probe_cache["status"])
+    return status if fresh else probe_providers()
 
 MIN_CUES_PER_MIN = 3     # darunter gilt ein Sub als Forced/unvollständig (Serien liegen bei 10–15/min)
 MAX_ATTEMPTS = 3         # Kandidaten pro Sprache, bevor aufgegeben wird
@@ -346,7 +410,15 @@ def _providers(cfg: dict, log: Log, tr: Tr):
         provider_configs["opensubtitlescom"] = {"username": user, "password": pw}
     else:
         log(tr("c_no_login"))
-    _LOG.debug("providers: %s", providers)
+    disabled = set(cfg.get("providers_disabled") or [])
+    providers = [p for p in providers if p not in disabled]
+    status = provider_status()
+    for p in list(providers):
+        ok, detail = status.get(p, (True, ""))
+        if not ok:
+            log(tr("c_provider_down", name=p, host=PROVIDER_HOSTS[p][0]))
+            providers.remove(p)
+    _LOG.debug("providers: %s (disabled=%s)", providers, sorted(disabled))
     return providers, provider_configs
 
 

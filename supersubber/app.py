@@ -53,6 +53,7 @@ THEMES = {
         DARK_TITLEBAR=True,   # Windows: dunkle Titelleiste, Farbe = BG
         EDGE3D="",            # 3D-Kanten von clam: leer = Standard (hell), sonst Farbe
         BORDER="#8fb3a6",     # Umrandung von Knöpfen, Feldern, Tabelle — weicher als CARD_EDGE
+        BAD_ON_CARD="#ffb3a7",   # Fehlertext auf Karten
     ),
     "light": dict(
         BG="#d9e1dd", CARD="#f3f6f4", CARD_EDGE="#b4c2bc", TEAL="#00a3a3", TEAL_DARK="#007f7f",
@@ -64,7 +65,7 @@ THEMES = {
         DROP_FG="#2c5c4e", TIP_BG="#fffbe6",
         ROW_NONE="#8a3b2a", ROW_PRESENT="#7c8a86",
         LOG_WARN="#7a5c00", LOG_OK="#1e7a45", LOG_FAIL="#a83a2a", LOG_SEP="#8a9a95",
-        CHECK_BG="white", GEAR="gear.png", DARK_TITLEBAR=False, EDGE3D="", BORDER="#b4c2bc",
+        CHECK_BG="white", GEAR="gear.png", DARK_TITLEBAR=False, EDGE3D="", BORDER="#b4c2bc", BAD_ON_CARD="#a83a2a",
     ),
     "dark": dict(
         BG="#1a1c1e", CARD="#26292c", CARD_EDGE="#3b4045", TEAL="#00b0b0", TEAL_DARK="#008a8a",
@@ -76,7 +77,7 @@ THEMES = {
         DROP_FG="#00b0b0", TIP_BG="#403f2e",
         ROW_NONE="#e08a78", ROW_PRESENT="#9aa7a3",
         LOG_WARN="#e2c46a", LOG_OK="#7fd3a0", LOG_FAIL="#f08b7b", LOG_SEP="#7d8a86",
-        CHECK_BG="#141618", GEAR="gear_light.png", DARK_TITLEBAR=True, EDGE3D="#3b4045", BORDER="#3b4045",
+        CHECK_BG="#141618", GEAR="gear_light.png", DARK_TITLEBAR=True, EDGE3D="#3b4045", BORDER="#3b4045", BAD_ON_CARD="#f08b7b",
     ),
 }
 BG = CARD = CARD_EDGE = TEAL = TEAL_DARK = INK = LIGHT = TITLE = GREY = LINK = FIELD = FIELD_ALT = ""
@@ -85,6 +86,7 @@ DROP_FG = TIP_BG = ROW_NONE = ROW_PRESENT = LOG_WARN = LOG_OK = LOG_FAIL = LOG_S
 DARK_TITLEBAR = False
 EDGE3D = ""
 BORDER = ""
+BAD_ON_CARD = ""
 
 
 def apply_theme(name: str) -> str:
@@ -210,6 +212,7 @@ class App(_Root):
         UI_FONT = _desktop_font()
         self.cfg = config.load()
         logfile.setup(self.cfg.get("log_max_mb", 20))
+        threading.Thread(target=core.probe_providers, daemon=True).start()   # tote Provider vor dem ersten Vorlauf kennen
         self.cfg["theme"] = apply_theme(str(self.cfg.get("theme", "green")))
         # Fenstergröße: zuletzt gemerkte, sonst nach Bildschirm (etwa 60 % × 80 %, zentriert)
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
@@ -1065,6 +1068,8 @@ class App(_Root):
         urow = ttk.Frame(f3); urow.pack(fill="x", padx=10, pady=(4, 10))
         ttk.Button(urow, text=self.t("st_check_updates"), style="Square.TButton",
                    command=lambda: self.check_updates(win)).pack(side="left")
+        ttk.Button(urow, text=self.t("st_providers"), style="Square.TButton",
+                   command=lambda: self._providers_dialog(win)).pack(side="left", padx=(8, 0))
         tk.Label(urow, text=f"SuperSubber {__version__}", bg=CARD, fg=LIGHT, font=(UI_FONT, 9))\
             .pack(side="left", padx=(12, 0))
 
@@ -1152,6 +1157,69 @@ class App(_Root):
         win.update_idletasks()
         win.geometry(f"+{parent.winfo_rootx() + 30}+{parent.winfo_rooty() + 60}")
         ent.focus_set()
+
+    def _providers_dialog(self, parent) -> None:
+        """Quellen mit Häkchen und Erreichbarkeit; Prüfung läuft im Hintergrund, Ergebnis aus dem Cache."""
+        win = tk.Toplevel(parent); win.title(self.t("pv_title")); win.resizable(False, False)
+        win.configure(bg=BG); win.transient(parent); win.grab_set()
+        set_icon(win); style_titlebar(win)
+        outer = ttk.Frame(win, padding=14, style="Bg.TFrame"); outer.pack(fill="both", expand=True)
+        card = tk.Frame(outer, bg=CARD); card.pack(fill="both", expand=True)
+        ttk.Label(card, text=self.t("pv_hint"), wraplength=420, foreground=GREY,
+                  font=(UI_FONT, 8)).pack(anchor="w", padx=10, pady=(10, 8))
+        g = ttk.Frame(card); g.pack(fill="x", padx=10, pady=(0, 6))
+        disabled = set(self.cfg.get("providers_disabled") or [])
+        has_login = bool(self.cfg.get("opensubtitles_user") and self.cfg.get("opensubtitles_password"))
+        vars_: dict[str, tk.BooleanVar] = {}
+        labels: dict[str, ttk.Label] = {}
+        for r, name in enumerate(core.BASE_PROVIDERS + core.LOGIN_PROVIDERS):
+            var = tk.BooleanVar(value=name not in disabled); vars_[name] = var
+            tk.Checkbutton(g, text=core.PROVIDER_LABELS.get(name, name), variable=var, bg=CARD, fg=LIGHT,
+                           activebackground=CARD, activeforeground=LIGHT, selectcolor=CHECK_BG, highlightthickness=0,
+                           font=(UI_FONT, 10), width=20, anchor="w").grid(row=r, column=0, sticky="w", pady=2)
+            ttk.Label(g, text=core.PROVIDER_HOSTS[name][0], foreground=GREY,
+                      font=(UI_FONT, 8)).grid(row=r, column=1, sticky="w", padx=(6, 12))
+            lab = ttk.Label(g, text="", font=(UI_FONT, 9)); lab.grid(row=r, column=2, sticky="w")
+            labels[name] = lab
+
+        def render(status: dict) -> None:
+            for name, lab in labels.items():
+                if name in core.LOGIN_PROVIDERS and not has_login:
+                    lab.configure(text=self.t("pv_login"), foreground=GREY); continue
+                ok, detail = status.get(name, (None, ""))
+                if ok is None:
+                    lab.configure(text=self.t("pv_checking"), foreground=GREY)
+                elif ok:
+                    lab.configure(text="✔ " + self.t("pv_ok"), foreground=LIGHT)
+                else:
+                    lab.configure(text="✖ " + self.t("pv_down"), foreground=BAD_ON_CARD)
+                    self._tooltip(lab, detail)
+
+        def recheck() -> None:
+            render({})
+
+            def work():
+                st = core.probe_providers()
+                if win.winfo_exists():
+                    win.after(0, lambda: render(st))
+            threading.Thread(target=work, daemon=True).start()
+        with core._probe_lock:
+            cached = dict(core._probe_cache["status"])
+        if cached:
+            render(cached)
+        else:
+            recheck()
+        brow = ttk.Frame(card); brow.pack(fill="x", padx=10, pady=(0, 10))
+        ttk.Button(brow, text=self.t("pv_recheck"), style="Square.TButton", command=recheck).pack(side="left")
+
+        def ok():
+            self.cfg["providers_disabled"] = [n for n, v in vars_.items() if not v.get()]
+            config.save(self.cfg); win.destroy()
+        b = ttk.Frame(outer, style="Bg.TFrame"); b.pack(pady=(12, 0))
+        ttk.Button(b, text=self.t("btn_ok"), style="Accent.TButton", command=ok).pack(side="left", padx=4)
+        ttk.Button(b, text=self.t("st_cancel"), command=win.destroy).pack(side="left", padx=4)
+        win.update_idletasks()
+        win.geometry(f"+{parent.winfo_rootx() + 30}+{parent.winfo_rooty() + 60}")
 
     def check_updates(self, parent=None, silent: bool = False):
         """Neuestes GitHub-Release abfragen und mit der eigenen Version vergleichen. Kein Auto-Update.

@@ -35,6 +35,7 @@ DEFAULTS = {
     "log_max_mb": 20,                    # Obergrenze der Logdatei im Config-Ordner
     "theme": "green",                    # Farbschema: green | light | dark
     "show_present": True,                # Tabelle: auch Videos zeigen, die alle Sprachen schon haben
+    "providers_disabled": [],            # vom Nutzer abgeschaltete Provider (Dialog in den Einstellungen)
 }
 
 # Windows-Primary-LANGID → ISO-Kürzel, nur für die Default-known_languages relevant
