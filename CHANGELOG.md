@@ -1,6 +1,11 @@
 # Changelog
 
-## 1.5.4 — unreleased
+## 1.6.0 — unreleased
+- Fix: a new search requested while another one was still running was dropped without a word — a second language ticked right after the first, or a folder dropped during a search. The request is now remembered; a running search is cancelled and restarted with the current selection.
+- Fix: confirming the IMDb dialog with an unchanged ID no longer searches again.
+- New option "Start automatically after the search", off by default. It never fires after a mere change of the language selection.
+- New option "Clear the history when a new search starts", on by default. Only the window is cleared, the log file keeps everything.
+- The sync line in the history no longer claims "~1–2 min"; the progress bar shows how far it is.
 - New option "Also keep the unsynced download", off by default: the subtitle with its original timing is saved next to the video as `<video>.<lang>.unsynced.srt`, in addition to the synced one. Handy for a manual sync when the automatic one fails. Players list it as a second track; SuperSubber never counts it as a present subtitle.
 - New option "Also get SDH subtitles", off by default: a second subtitle per language for the deaf and hard of hearing, saved as `<video>.<lang>.sdh.srt` and shown in a row of its own below the video. SDH subtitles mostly exist in English, so finding none is not an error and leaves no mark in the table. With the option off nothing changes: an SDH subtitle counts as a present subtitle like before.
 - History and log: Gestdown hits are named `Show S01E03 · Episode title · release` instead of the run-together `Show s01e03Episode title` that subliminal produces.

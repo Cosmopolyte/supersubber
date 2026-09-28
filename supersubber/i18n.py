@@ -102,6 +102,14 @@ STRINGS = {
         "st_ext_remove": "Entfernen",
         "st_check_updates": "Auf Updates prüfen",
         "st_upd_on_start": "Beim Start auf Updates prüfen",
+        "st_auto_start": "Nach der Suche automatisch starten",
+        "tt_auto_start": "Lädt und synct direkt nach der Suche, ohne Klick auf Start.\n"
+                         "Ein falsch erkanntes Video bekommt dann seinen Untertitel,\n"
+                         "bevor sich eine IMDb-ID setzen lässt.\n"
+                         "Für Videos ohne Treffer bleibt die IMDb-ID danach weiter möglich.\n"
+                         "Gilt nicht, wenn nur die Sprachauswahl geändert wird.",
+        "st_clear_history": "Verlauf bei neuer Suche leeren",
+        "tt_clear_history": "Geleert wird nur das Fenster, die Logdatei behält alles.",
         "st_embedded": "Eingebettete Untertitelspuren gelten als vorhanden",
         "st_keep_unsynced": "Ungesyncten Download zusätzlich behalten",
         "tt_keep_unsynced": "Legt den Untertitel mit seinem ursprünglichen Timing neben das Video,\n"
@@ -193,7 +201,7 @@ STRINGS = {
         "c_imdb_invalid": "Keine gültige IMDb-ID: {val}",
         "c_sync_suspect": "    ⚠ Viele stark verschobene Blöcke — der Untertitel passt vermutlich nicht zu diesem Video (anderer Film/Schnitt).",
         "c_got": "    geladen [{lang}]: {rel} ({prov})",
-        "c_syncing": "    synchronisiere gegen die Tonspur (~1–2 min)…",
+        "c_syncing": "    synchronisiere gegen die Tonspur…",
         "p_suspect": "{n} zu prüfen",
         "suspect_hint": "⚠ Prüfen: Der geladene Untertitel passt vermutlich nicht zu diesem Video — IMDb-ID in der Tabelle setzen und erneut starten.",
     },
@@ -248,6 +256,14 @@ STRINGS = {
         "st_ext_remove": "Удалить",
         "st_check_updates": "Проверить обновления",
         "st_upd_on_start": "Проверять обновления при запуске",
+        "st_auto_start": "Запускать автоматически после поиска",
+        "tt_auto_start": "Загружает и синхронизирует сразу после поиска, без нажатия «Старт».\n"
+                         "Неверно распознанное видео получит субтитры раньше,\n"
+                         "чем можно будет задать IMDb ID.\n"
+                         "Для видео без результата IMDb ID можно задать и после.\n"
+                         "Не действует, если меняется только выбор языков.",
+        "st_clear_history": "Очищать журнал при новом поиске",
+        "tt_clear_history": "Очищается только окно, файл журнала сохраняет всё.",
         "st_embedded": "Встроенные дорожки субтитров считаются имеющимися",
         "st_keep_unsynced": "Дополнительно сохранять несинхронизированный файл",
         "tt_keep_unsynced": "Сохраняет субтитры с исходным таймингом рядом с видео\n"
@@ -338,7 +354,7 @@ STRINGS = {
         "c_imdb_invalid": "Неверный IMDb-ID: {val}",
         "c_sync_suspect": "    ⚠ Много сильно сдвинутых блоков — субтитры, вероятно, не подходят к этому видео (другой фильм/версия).",
         "c_got": "    загружено [{lang}]: {rel} ({prov})",
-        "c_syncing": "    синхронизация со звуковой дорожкой (~1–2 мин)…",
+        "c_syncing": "    синхронизация со звуковой дорожкой…",
         "p_suspect": "{n} проверить",
         "suspect_hint": "⚠ Проверить: загруженные субтитры, вероятно, не подходят к этому видео — задайте IMDb-ID в таблице и запустите снова.",
     },
@@ -393,6 +409,14 @@ STRINGS = {
         "st_ext_remove": "Remove",
         "st_check_updates": "Check for updates",
         "st_upd_on_start": "Check for updates on start",
+        "st_auto_start": "Start automatically after the search",
+        "tt_auto_start": "Downloads and syncs right after the search, without a click on Start.\n"
+                         "A wrongly recognized video then gets its subtitle\n"
+                         "before an IMDb ID can be set.\n"
+                         "Videos without a hit can still get an IMDb ID afterwards.\n"
+                         "Does not apply when only the language selection changes.",
+        "st_clear_history": "Clear the history when a new search starts",
+        "tt_clear_history": "Only the window is cleared, the log file keeps everything.",
         "st_embedded": "Embedded subtitle tracks count as present",
         "st_keep_unsynced": "Also keep the unsynced download",
         "tt_keep_unsynced": "Saves the subtitle with its original timing next to the video\n"
@@ -483,7 +507,7 @@ STRINGS = {
         "c_imdb_invalid": "Not a valid IMDb ID: {val}",
         "c_sync_suspect": "    ⚠ Many heavily shifted blocks — this subtitle probably does not match the video (different movie/cut).",
         "c_got": "    downloaded [{lang}]: {rel} ({prov})",
-        "c_syncing": "    syncing against the audio track (~1–2 min)…",
+        "c_syncing": "    syncing against the audio track…",
         "p_suspect": "{n} to check",
         "suspect_hint": "⚠ Check: the downloaded subtitle probably does not match this video — set the IMDb ID in the table and start again.",
     },

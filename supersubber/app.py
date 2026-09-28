@@ -391,6 +391,9 @@ class App(_Root):
         self.table.bind("<Configure>", lambda e: self.after_idle(self._place_imdb_buttons))
         tsb.pack(side="right", fill="y")
         self.table.pack(side="left", fill="both", expand=True)
+        self._scan_pending: tuple | None = None       # Vorlauf-Wunsch, der während laufender Arbeit kam
+        self._scan_auto = True
+        self._worker_kind = ""                        # "scan" oder "work" — nur ein Vorlauf wird für einen neuen abgebrochen
         self._row_items: dict[str, core.Item] = {}
         self._sdh_rows: dict[str, str] = {}           # Video-Zeile → SDH-Zeile darunter
         self._imdb_btns: dict[str, tuple] = {}
@@ -475,7 +478,7 @@ class App(_Root):
         config.save(self.cfg)
         self._update_lang_btn()
         if os.path.isdir(self.folder_var.get().strip().strip('"')):
-            self._trigger_scan()             # andere Sprachen = anderer Vorlauf
+            self._trigger_scan(auto=False)   # andere Sprachen = anderer Vorlauf
 
     def _update_lang_btn(self):
         sel = [i18n.lang_name_ui(self.ui, c) for c, v in self.lang_sel.items() if v.get()]
@@ -554,14 +557,25 @@ class App(_Root):
         win.protocol("WM_DELETE_WINDOW", close)
 
     # ---- Vorlauf (Tabelle) ---------------------------------------------------
-    def _trigger_scan(self):
-        """Ordner + Sprachen → Vorlauf im Hintergrund. Veraltete Ergebnisse werden per Generation verworfen."""
+    def _trigger_scan(self, auto: bool = True):
+        """Ordner + Sprachen → Vorlauf im Hintergrund. Veraltete Ergebnisse werden per Generation verworfen.
+        auto=False: dieser Vorlauf startet den Lauf nie von selbst, etwa nach einem Sprachwechsel.
+        Läuft gerade etwas, wird der Wunsch vorgemerkt statt verworfen; ein laufender Vorlauf wird abgebrochen."""
         if self.worker and self.worker.is_alive():
+            self._scan_pending = (True, auto)
+            if self._worker_kind == "scan":
+                self.cancel.set()
             return
+        self._scan_pending = None
         folder = self.folder_var.get().strip().strip('"')
         langs = [c for c, v in self.lang_sel.items() if v.get()]
         if not os.path.isdir(folder) or not langs:
+            logfile.log.info("scan not started: folder=%r is_dir=%s languages=%s", folder, os.path.isdir(folder), langs)
             return
+        self._scan_auto = auto
+        self._worker_kind = "scan"
+        if self.cfg.get("clear_history_on_scan", True):
+            self.log.config(state="normal"); self.log.delete("1.0", "end"); self.log.config(state="disabled")
         self._scan_gen += 1
         gen = self._scan_gen
         self.scan = None
@@ -591,6 +605,8 @@ class App(_Root):
             return
         self._busy(False)
         self.spinner.config(text="")
+        if self._run_pending():
+            return
         self.scan = sc
         if sc.error:
             self.bar.idle(self.t("error"))
@@ -604,10 +620,19 @@ class App(_Root):
         self.status.config(text=self.t("scan_summary", n=n, f=f, m=n - f - p, p=p))
         if f:
             self.start_btn.state(["!disabled"])
-        if self._auto_run:
+        if self._auto_run or (self._scan_auto and self.cfg.get("auto_start", False)):
             self._auto_run = False
             if f:
                 self.start()
+
+    def _run_pending(self) -> bool:
+        """Vorgemerkten Vorlauf starten, sobald der Worker fertig ist. True, wenn einer gestartet wurde."""
+        pending, self._scan_pending = self._scan_pending, None
+        if not pending:
+            return False
+        self.worker = None                # hat seine letzte Meldung geliefert, auch wenn der Thread noch ausläuft
+        self._trigger_scan(auto=pending[1])
+        return bool(self.worker and self.worker.is_alive())
 
     # ---- Tabelle -------------------------------------------------------------
     _SYM = {"present": "✔", "embedded": "✔", "found": "✔", "synced": "✔", "suspect": "⚠", "unsynced": "⚠",
@@ -817,6 +842,8 @@ class App(_Root):
                 self._dialog(win, self.t("c_imdb_invalid", val=raw)); return
             items = [it] + (siblings if all_var.get() else [])
             win.destroy()
+            if all(o.imdb_id == m.group(0) for o in items):
+                return                       # nichts geändert — dieselbe ID findet nichts anderes
             self._rescan(items, m.group(0))
 
         e.bind("<Return>", ok)
@@ -846,6 +873,7 @@ class App(_Root):
                         on_item=lambda it: self.q.put(("rescan_item", it)))
             self.q.put(("rescan_done", items))
 
+        self._worker_kind = "work"
         self.worker = threading.Thread(target=work, daemon=True)
         self._busy(True)
         self.worker.start()
@@ -917,6 +945,7 @@ class App(_Root):
                                  frac=lambda v: self.q.put(("frac", v)))
             self.q.put(("done", res))
 
+        self._worker_kind = "work"
         self.worker = threading.Thread(target=work, daemon=True)
         self._busy(True)
         self.worker.start()
@@ -936,6 +965,7 @@ class App(_Root):
             self._trigger_scan(); return
         self.cancel.clear()
         self._log_sep(self.t("start"))
+        self._worker_kind = "work"
         self.worker = threading.Thread(target=self._work, daemon=True)
         self._busy(True)
         self.worker.start()
@@ -980,9 +1010,9 @@ class App(_Root):
                 elif item[0] == "rescan_item":
                     self._refresh_rows([item[1]])
                 elif item[0] == "rescan_done":
-                    self._rescan_finished(item[1]); return
+                    self._rescan_finished(item[1]); self._run_pending(); return
                 elif item[0] == "done":
-                    self._finish(item[1]); return
+                    self._finish(item[1]); self._run_pending(); return
         except queue.Empty:
             pass
         self.after(100, self._poll)
@@ -1098,6 +1128,8 @@ class App(_Root):
         emb_var = check("embedded_counts", "st_embedded", (0, 2))
         keep_var = check("keep_unsynced", "st_keep_unsynced", (0, 2), default=False, tip="tt_keep_unsynced")
         sdh_var = check("sdh_extra", "st_sdh_extra", (0, 2), default=False, tip="tt_sdh_extra")
+        auto_var = check("auto_start", "st_auto_start", (0, 2), default=False, tip="tt_auto_start")
+        clear_var = check("clear_history_on_scan", "st_clear_history", (0, 2), tip="tt_clear_history")
         upd_var = check("check_updates_on_start", "st_upd_on_start", (0, 6))
         g3 = ttk.Frame(f3); g3.pack(fill="x", padx=10, pady=(0, 6))
         ttk.Label(g3, text=self.t("st_theme")).grid(row=0, column=0, sticky="w", pady=3)
@@ -1129,6 +1161,8 @@ class App(_Root):
             self.cfg["embedded_counts"] = bool(emb_var.get())
             self.cfg["keep_unsynced"] = bool(keep_var.get())
             self.cfg["sdh_extra"] = bool(sdh_var.get())
+            self.cfg["auto_start"] = bool(auto_var.get())
+            self.cfg["clear_history_on_scan"] = bool(clear_var.get())
             self.cfg["video_extensions_extra"] = ext_var.get().strip()
             try:
                 self.cfg["log_max_mb"] = max(1, min(500, int(float(log_var.get().replace(",", ".")))))
