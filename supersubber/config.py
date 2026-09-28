@@ -36,6 +36,8 @@ DEFAULTS = {
     "theme": "green",                    # Farbschema: green | light | dark
     "show_present": True,                # Tabelle: auch Videos zeigen, die alle Sprachen schon haben
     "providers_disabled": [],            # vom Nutzer abgeschaltete Provider (Dialog in den Einstellungen)
+    "keep_unsynced": False,              # rohen Download zusätzlich als <Video>.<lang>.unsynced.srt ablegen
+    "sdh_extra": False,                  # je Sprache zusätzlich eine SDH-Fassung als <Video>.<lang>.sdh.srt
 }
 
 # Windows-Primary-LANGID → ISO-Kürzel, nur für die Default-known_languages relevant

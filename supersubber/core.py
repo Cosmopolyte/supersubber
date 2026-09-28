@@ -168,7 +168,10 @@ def count_videos(folder: str, min_size_mb: int, limit: int = 2, exts: frozenset 
     return n
 
 
-_SKIP_TOKENS = {"forced", "hi", "sdh", "cc", "default"}   # Zusätze in Sub-Dateinamen, keine Sprachen
+_SKIP_TOKENS = {"forced", "hi", "sdh", "cc", "default", "unsynced"}   # Zusätze in Sub-Dateinamen, keine Sprachen
+_SDH_TOKENS = {"sdh", "hi", "cc"}                         # Kennzeichen für Untertitel für Hörgeschädigte
+UNSYNCED_TAG = "unsynced"                                 # <Video>.<lang>.unsynced.srt = roher Download, zählt nie als vorhanden
+SDH_TAG = "sdh"                                           # <Video>.<lang>.sdh.srt
 
 
 def _lang_from_token(tok: str) -> str | None:
@@ -202,9 +205,11 @@ def _detect_language(sub: Path) -> str | None:
         return None
 
 
-def external_subs(video: Path) -> dict[str, tuple[Path, str]]:
+def external_subs(video: Path, kind: str = "any") -> dict[str, tuple[Path, str]]:
     """Untertitel-Dateien neben dem Video: lang → (Datei, Quelle). Quelle „tag" bei `Film.en.srt`, `Film.eng.srt`,
-    `Film.English.srt`; „detected" bei `Film.srt` ohne Kürzel, dann per Textanalyse. Forced-Subs zählen nicht."""
+    `Film.English.srt`; „detected" bei `Film.srt` ohne Kürzel, dann per Textanalyse. Forced-Subs und der
+    aufbewahrte rohe Download (`Film.en.unsynced.srt`) zählen nicht.
+    kind: „any" = jede Datei zählt; „normal" = nur ohne SDH-Kennzeichen; „sdh" = nur mit `sdh`, `hi` oder `cc`."""
     out: dict[str, tuple[Path, str]] = {}
     stem = video.stem
     try:
@@ -216,9 +221,13 @@ def external_subs(video: Path) -> dict[str, tuple[Path, str]]:
             continue
         rest = p.name[len(stem):-len(p.suffix)]
         tokens = [t for t in re.split(r"[.\-_ ]+", rest) if t]
-        if any(t.lower() == "forced" for t in tokens):
+        low = {t.lower() for t in tokens}
+        if low & {"forced", UNSYNCED_TAG}:
             continue
         lang = next((l for l in (_lang_from_token(t) for t in tokens) if l), None)
+        sdh = bool(lang) and bool(low & _SDH_TOKENS)
+        if kind != "any" and sdh != (kind == "sdh"):
+            continue
         if lang:
             out.setdefault(lang, (p, "tag"))
         elif not tokens:
@@ -230,23 +239,35 @@ def external_subs(video: Path) -> dict[str, tuple[Path, str]]:
     return out
 
 
-def embedded_subs(video: Path) -> dict[str, str]:
-    """Eingebettete Untertitelspuren: lang → Codec. Forced-Spuren und Spuren ohne Sprachkennung zählen nicht."""
+def embedded_subs(video: Path, kind: str = "any") -> dict[str, str]:
+    """Eingebettete Untertitelspuren: lang → Codec. Forced-Spuren und Spuren ohne Sprachkennung zählen nicht.
+    kind wie bei external_subs; SDH = Disposition hearing_impaired oder „SDH" im Spurtitel."""
+    return _embedded_pick(_embedded_streams(video), kind)
+
+
+def _embedded_streams(video: Path) -> list:
+    """Rohdaten der Untertitelspuren aus ffprobe — einmal lesen, mehrfach auswerten."""
     import json
-    from babelfish import Language
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
     try:
         r = subprocess.run([_bin("ffprobe"), "-v", "error", "-select_streams", "s", "-show_entries",
                             "stream=codec_name,disposition:stream_tags=language,title", "-of", "json", str(video)],
                            capture_output=True, text=True, encoding="utf-8", errors="replace", creationflags=flags)
-        streams = json.loads(r.stdout or "{}").get("streams", [])
+        return json.loads(r.stdout or "{}").get("streams", [])
     except (OSError, ValueError):
-        return {}
+        return []
+
+
+def _embedded_pick(streams: list, kind: str = "any") -> dict[str, str]:
+    from babelfish import Language
     out: dict[str, str] = {}
     for s in streams:
         tags = s.get("tags") or {}
         title = str(tags.get("title", "")).lower()
         if (s.get("disposition") or {}).get("forced") or "forced" in title:
+            continue
+        sdh = bool((s.get("disposition") or {}).get("hearing_impaired")) or bool(re.search(r"\bsdh\b", title))
+        if kind != "any" and sdh != (kind == "sdh"):
             continue
         code = str(tags.get("language", "")).strip()
         if not code or code == "und":
@@ -494,6 +515,21 @@ class Item:
     status: dict = field(default_factory=dict)        # lang → present|embedded|found|none|synced|suspect|unsynced|missing
     existing: dict = field(default_factory=dict)      # lang → Herkunft: "file", "detected", "embedded"
     error: str | None = None
+    # Nur mit der Option „SDH zusätzlich": normal und SDH werden je Sprache getrennt geführt
+    split: bool = False
+    sdh_langs: list = field(default_factory=list)     # Sprachen, für die eine SDH-Fassung gesucht wird
+    sdh_found: dict = field(default_factory=dict)     # lang → True/False
+    sdh_status: dict = field(default_factory=dict)    # lang → present|embedded|found|synced|suspect|unsynced; fehlt = nichts zu melden
+
+    @property
+    def wanted(self) -> bool:
+        """Für dieses Video wird gesucht — normal oder SDH."""
+        return bool(self.langs or self.sdh_langs)
+
+    @property
+    def settled(self) -> bool:
+        """Nichts zu tun: alle Sprachen vorhanden und keine SDH-Fassung in Aussicht."""
+        return not self.langs and not any(self.sdh_found.get(l) for l in self.sdh_langs)
 
 
 @dataclass
@@ -507,11 +543,12 @@ class Scan:
 
     @property
     def skipped(self) -> int:
-        return sum(1 for it in self.items if not it.langs)
+        return sum(1 for it in self.items if it.settled)
 
     @property
     def runnable(self) -> list:
-        return [it for it in self.items if any(it.found.get(l) for l in it.langs)]
+        return [it for it in self.items if any(it.found.get(l) for l in it.langs)
+                or any(it.sdh_found.get(l) for l in it.sdh_langs)]
 
 
 def _se(v) -> str:
@@ -591,6 +628,19 @@ def _release_name(s) -> str:
     return str(getattr(s, "release", None) or getattr(s, "info", None) or s.id)
 
 
+def _pick(cands: list, split: bool, sdh: bool) -> list:
+    """Kandidaten nach Art: ohne die SDH-Option zählt jeder; mit ihr trennt das Kennzeichen des Providers.
+    Das Kennzeichen setzt der Uploader — ein Treffer ohne Kennzeichen gilt als normal."""
+    if not split:
+        return list(cands)
+    return [s for s in cands if bool(getattr(s, "hearing_impaired", False)) == sdh]
+
+
+def _hits(it: "Item") -> str:
+    hits = [l for l in it.langs if it.found.get(l)] + [f"{l} SDH" for l in it.sdh_langs if it.sdh_found.get(l)]
+    return ", ".join(hits) if hits else "—"
+
+
 def _title_from_candidates(cands: list, episode: bool) -> str:
     """Titel aus den Provider-Treffern (häufigster Wert) — die kennen den Film/die Serie zur IMDb-ID.
     opensubtitlescom: series_title/movie_title; opensubtitles: movie_name („\"MobLand\" Stick or Twist");
@@ -644,6 +694,9 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
     from subliminal.video import Episode
 
     it.candidates, it.found, it.error = [], {}, None
+    it.sdh_found = {}
+    for lang in it.sdh_langs:
+        it.sdh_status.pop(lang, None)
     try:
         v = _scan_video(it.video)
         refine(v, refiners=("hash",))
@@ -668,7 +721,7 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
             it.min_score = episode_scores["series"] + episode_scores["season"] + episode_scores["episode"]
         else:
             it.min_score = movie_scores["title"] + (movie_scores["year"] if getattr(v, "year", None) else 0)
-        want = {Language.fromietf(l) for l in it.langs}
+        want = {Language.fromietf(l) for l in it.langs + it.sdh_langs}
         it.candidates = list(pool.list_subtitles(v, want))
         if it.imdb_id:
             # mit ID zählt, was die Provider zur ID sagen — nicht der aus dem Pfad geratene Titel
@@ -682,20 +735,32 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
         _LOG.debug("%s: imdb=%s (%s) min_score=%d candidates=%d", it.video.name, it.imdb_id or "-",
                    it.imdb_source or "-", it.min_score, len(it.candidates))
         for s in sorted(it.candidates, key=lambda s: -score(s, v)):
-            _LOG.debug("  cand %s %s id=%s score=%d matches=%s release=%r", s.provider_name, s.language,
-                       s.id, score(s, v), sorted(s.get_matches(v)), _release_name(s))
+            _LOG.debug("  cand %s %s id=%s score=%d matches=%s sdh=%s release=%r", s.provider_name, s.language,
+                       s.id, score(s, v), sorted(s.get_matches(v)), bool(getattr(s, "hearing_impaired", False)),
+                       _release_name(s))
+        normal, sdh = _pick(it.candidates, it.split, False), _pick(it.candidates, it.split, True)
         for lang in it.langs:
             L = Language.fromietf(lang)
-            best = max((score(s, v) for s in it.candidates if s.language == L), default=0)
+            best = max((score(s, v) for s in normal if s.language == L), default=0)
             it.found[lang] = best >= it.min_score
             it.status[lang] = "found" if it.found[lang] else "none"
             _LOG.debug("%s: %s best=%d -> %s", it.video.name, lang, best, it.status[lang])
+        for lang in it.sdh_langs:
+            # eine fehlende SDH-Fassung ist kein Fehler: kein Status, keine Zeile
+            L = Language.fromietf(lang)
+            best = max((score(s, v) for s in sdh if s.language == L), default=0)
+            it.sdh_found[lang] = best >= it.min_score
+            if it.sdh_found[lang]:
+                it.sdh_status[lang] = "found"
+            _LOG.debug("%s: %s SDH best=%d -> %s", it.video.name, lang, best, it.sdh_found[lang])
     except Exception as e:  # noqa: BLE001
         _LOG.exception("%s: search failed", it.video.name)
         it.error = f"{type(e).__name__}: {e}"
         for lang in it.langs:
             it.found[lang] = False
             it.status[lang] = "none"
+        for lang in it.sdh_langs:
+            it.sdh_found[lang] = False
         log(tr("c_dl_err", err=it.error))
 
 
@@ -722,12 +787,26 @@ def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: 
                     sc.noaccess.append(str(d))
                     log(tr("c_no_write", folder=d.name or str(d)))
         use_embedded = bool(cfg.get("embedded_counts", True))
+        split = bool(cfg.get("sdh_extra", False))
+        kind = "normal" if split else "any"
         for v in videos:
             if not writable[v.parent]:
                 continue
-            it = Item(video=v, langs=[])
-            ext = external_subs(v)
-            emb = embedded_subs(v) if use_embedded else {}
+            it = Item(video=v, langs=[], split=split)
+            ext = external_subs(v, kind)
+            streams = _embedded_streams(v) if use_embedded else []
+            emb = _embedded_pick(streams, kind)
+            if split:
+                ext_sdh, emb_sdh = external_subs(v, "sdh"), _embedded_pick(streams, "sdh")
+                for l in languages:
+                    if l in ext_sdh:
+                        it.sdh_status[l] = "present"
+                    elif l in emb_sdh:
+                        it.sdh_status[l] = "embedded"
+                    else:
+                        it.sdh_langs.append(l)
+                _LOG.debug("%s: sdh external=%s embedded=%s", v.name,
+                           {k: p.name for k, (p, _) in ext_sdh.items()}, emb_sdh)
             _LOG.debug("%s: external=%s embedded=%s", v.name, {k: (p.name, how) for k, (p, how) in ext.items()}, emb)
             for lang, (p, how) in ext.items():
                 if how == "detected":
@@ -744,8 +823,8 @@ def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: 
                 else:
                     it.langs.append(l)
             sc.items.append(it)
-        todo = [it for it in sc.items if it.langs]
-        log(tr("c_found", v=len(videos), t=len(todo), langs=", ".join(languages)))
+        todo = [it for it in sc.items if it.wanted]
+        log(tr("c_found", v=len(videos), t=sum(1 for it in sc.items if it.langs), langs=", ".join(languages)))
         if not todo:
             return sc
         providers, provider_configs = _providers(cfg, log, tr)
@@ -756,9 +835,7 @@ def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: 
                     break
                 progress(it.video.name, i, len(todo))
                 _search_item(pool, it, log, tr, exts=exts)
-                hits = [l for l in it.langs if it.found.get(l)]
-                log(tr("c_scan_item", name=it.video.name, rec=it.recognized or "?",
-                       hits=", ".join(hits) if hits else "—"))
+                log(tr("c_scan_item", name=it.video.name, rec=it.recognized or "?", hits=_hits(it)))
     except Exception as e:  # noqa: BLE001
         sc.error = f"{type(e).__name__}: {e}"
     return sc
@@ -781,23 +858,28 @@ def rescan(items: list, imdb_id: str | None, cfg: dict, log: Log, cancel: thread
                 it.imdb_id, it.imdb_source = None, ""
                 log(tr("c_research", name=it.video.name))
             _search_item(pool, it, log, tr, manual_id=imdb_id, exts=video_exts(cfg))
-            hits = [l for l in it.langs if it.found.get(l)]
-            log(tr("c_scan_item", name=it.video.name, rec=it.recognized or "?",
-                   hits=", ".join(hits) if hits else "—"))
+            log(tr("c_scan_item", name=it.video.name, rec=it.recognized or "?", hits=_hits(it)))
             if on_item:
                 on_item(it)
 
 
-def _download_item(pool, it: Item, tmp: Path, log: Log, tr: Tr) -> dict:
-    """Beste Kandidaten laden (Qualitätsprüfung inklusive). Liefert lang → Datei."""
+def _download_item(pool, it: Item, tmp: Path, log: Log, tr: Tr, sdh: bool = False) -> dict:
+    """Beste Kandidaten laden (Qualitätsprüfung inklusive). Liefert lang → Datei.
+    sdh=True lädt die SDH-Fassungen, in einen eigenen Unterordner — die Dateinamen wären sonst gleich."""
     from babelfish import Language
     from subliminal import save_subtitles
 
     got: dict[str, Path] = {}
     v = it.v
-    want = {Language.fromietf(l) for l in it.langs if it.found.get(l)}
+    langs, found = (it.sdh_langs, it.sdh_found) if sdh else (it.langs, it.found)
+    want = {Language.fromietf(l) for l in langs if found.get(l)}
     if not want or v is None:
         return got
+    cands = _pick(it.candidates, it.split, sdh)
+    mark = " SDH" if sdh else ""
+    if sdh:
+        tmp = tmp / "sdh"
+        tmp.mkdir(exist_ok=True)
     score = _score_fn(v, it.imdb_id)
     minutes = _duration_min(it.video)
     ignore: list[str] = []
@@ -805,7 +887,7 @@ def _download_item(pool, it: Item, tmp: Path, log: Log, tr: Tr) -> dict:
         for _attempt in range(MAX_ATTEMPTS):
             if not want:
                 break
-            best = pool.download_best_subtitles(it.candidates, v, want, min_score=it.min_score,
+            best = pool.download_best_subtitles(cands, v, want, min_score=it.min_score,
                                                 subtitle_categories="n,hi,fo", ignore_subtitles=ignore,
                                                 compute_score=score)
             if not best:
@@ -814,15 +896,15 @@ def _download_item(pool, it: Item, tmp: Path, log: Log, tr: Tr) -> dict:
                 p = tmp / Path(s.get_path(v)).name
                 cues = _cue_count(p)
                 if minutes and cues / minutes < MIN_CUES_PER_MIN:
-                    log(tr("c_discard", lang=s.language.alpha2, cues=cues,
+                    log(tr("c_discard", lang=s.language.alpha2 + mark, cues=cues,
                            mins=f"{minutes:.0f}", prov=s.provider_name))
                     ignore.append(s.id)
                     p.unlink(missing_ok=True)
                     continue
                 rel = _release_name(s)
-                log(tr("c_got", lang=s.language.alpha2, rel=rel, prov=s.provider_name))
-                _LOG.info("%s: downloaded %s from %s id=%s score=%d cues=%d release=%r", it.video.name,
-                          s.language, s.provider_name, s.id, score(s, v), cues, rel)
+                log(tr("c_got", lang=s.language.alpha2 + mark, rel=rel, prov=s.provider_name))
+                _LOG.info("%s: downloaded %s%s from %s id=%s score=%d cues=%d release=%r", it.video.name,
+                          s.language, mark, s.provider_name, s.id, score(s, v), cues, rel)
                 _ensure_utf8(p)
                 got[s.language.alpha2] = p
                 want.discard(s.language)
@@ -851,6 +933,7 @@ def run_scan(sc: Scan, cfg: dict, progress: Progress, log: Log, cancel: threadin
         if not work:
             return res
         providers, provider_configs = _providers(cfg, log, tr)
+        keep_unsynced = bool(cfg.get("keep_unsynced", False))
         tmp = Path(tempfile.mkdtemp(prefix="supersubber-"))
         try:
             with ProviderPool(providers=providers, provider_configs=provider_configs) as pool:
@@ -859,37 +942,55 @@ def run_scan(sc: Scan, cfg: dict, progress: Progress, log: Log, cancel: threadin
                     if cancel.is_set():
                         res.cancelled = True
                         break
-                    langs = [l for l in it.langs if it.found.get(l)]
+                    # (Sprache, SDH?) — erst die normalen Fassungen, dann die SDH-Fassungen
+                    jobs = [(l, False) for l in it.langs if it.found.get(l)] + \
+                           [(l, True) for l in it.sdh_langs if it.sdh_found.get(l)]
                     progress(it.video.name, i, total)
-                    log(f"[{i}/{total}] {it.video.name}  [{', '.join(langs)}]")
+                    log(f"[{i}/{total}] {it.video.name}  [{', '.join(l + (' SDH' if s else '') for l, s in jobs)}]")
                     sp = (lambda base: (lambda f: frac(min(1.0, (base + f) / total))))(i - 1) if frac else (lambda f: None)
                     sp(0.05)
-                    got = _download_item(pool, it, tmp, log, tr)
+                    got = {False: _download_item(pool, it, tmp, log, tr),
+                           True: _download_item(pool, it, tmp, log, tr, sdh=True)}
                     sp(0.35)
-                    for lang in langs:
+                    for lang, sdh in jobs:
                         if cancel.is_set():
                             break
-                        dl = got.get(lang)
+                        status = it.sdh_status if sdh else it.status
+                        label = f"{lang} SDH" if sdh else lang
+                        dl = got[sdh].get(lang)
                         if not dl or not dl.exists():
+                            if sdh:
+                                # keine SDH-Fassung ladbar: neutral vermerken, zählt nicht als fehlend
+                                log(tr("c_sdh_none", lang=lang))
+                                status.pop(lang, None)
+                                continue
                             log(tr("c_not_found", lang=lang))
-                            it.status[lang] = "missing"
+                            status[lang] = "missing"
                             res.missing.append(f"{it.video.name}  [{lang}]")
                             res.missing_items.append((str(it.video), lang))
                             continue
-                        out = it.video.with_name(f"{it.video.stem}.{lang}{dl.suffix.lower()}")
+                        mid = f".{lang}.{SDH_TAG}" if sdh else f".{lang}"
+                        out = it.video.with_name(f"{it.video.stem}{mid}{dl.suffix.lower()}")
+                        if keep_unsynced:
+                            raw = it.video.with_name(f"{it.video.stem}{mid}.{UNSYNCED_TAG}{dl.suffix.lower()}")
+                            try:
+                                shutil.copyfile(dl, raw)
+                                log(tr("c_kept_unsynced", name=raw.name))
+                            except OSError as e:
+                                log(tr("c_dl_err", err=f"{type(e).__name__}: {e}"))
                         log(tr("c_syncing"))
                         ok, suspect = _alass(it.video, dl, out, log, tr, subprog=lambda f: sp(0.4 + 0.58 * f))
                         if ok and suspect:
-                            it.status[lang] = "suspect"
-                            res.suspect.append(f"{it.video.name}  [{lang}]")
+                            status[lang] = "suspect"
+                            res.suspect.append(f"{it.video.name}  [{label}]")
                             res.suspect_items.append((str(it.video), lang))
                         elif ok:
-                            it.status[lang] = "synced"
-                            res.synced.append(f"{it.video.name}  [{lang}]")
+                            status[lang] = "synced"
+                            res.synced.append(f"{it.video.name}  [{label}]")
                         else:
                             shutil.copyfile(dl, out)
-                            it.status[lang] = "unsynced"
-                            res.unsynced.append(f"{it.video.name}  [{lang}]")
+                            status[lang] = "unsynced"
+                            res.unsynced.append(f"{it.video.name}  [{label}]")
                             log(tr("c_sync_fail"))
                     sp(1.0)
         finally:
@@ -908,7 +1009,7 @@ def run(folder: str, languages: list[str], cfg: dict, progress: Progress, log: L
         res = Result(); res.error = sc.error
         return res
     if imdb_id:
-        rescan([it for it in sc.items if it.langs], imdb_id, cfg, log, cancel, tr)
+        rescan([it for it in sc.items if it.wanted], imdb_id, cfg, log, cancel, tr)
     if sc.cancelled:
         res = Result(); res.cancelled = True
         return res

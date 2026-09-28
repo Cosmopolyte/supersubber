@@ -103,6 +103,18 @@ STRINGS = {
         "st_check_updates": "Auf Updates prüfen",
         "st_upd_on_start": "Beim Start auf Updates prüfen",
         "st_embedded": "Eingebettete Untertitelspuren gelten als vorhanden",
+        "st_keep_unsynced": "Ungesyncten Download zusätzlich behalten",
+        "tt_keep_unsynced": "Legt den Untertitel mit seinem ursprünglichen Timing neben das Video,\n"
+                            "als <Video>.<Sprache>.unsynced.srt, zusätzlich zum gesyncten.\n"
+                            "Nützlich für einen manuellen Sync, falls der automatische scheitert.\n"
+                            "Player zeigen die Datei als zweite Spur.",
+        "st_sdh_extra": "SDH-Untertitel zusätzlich laden",
+        "tt_sdh_extra": "SDH-Untertitel beschreiben auch Geräusche, Musik und Sprecher, für Gehörlose und Schwerhörige.\n"
+                        "Sucht je Sprache einen zweiten Untertitel und speichert ihn als <Video>.<Sprache>.sdh.srt.\n"
+                        "Die Tabelle zeigt ihn in einer eigenen Zeile. Meist nur auf Englisch zu finden;\n"
+                        "wird keiner gefunden, ist das kein Fehler.\n"
+                        "Zwei Downloads je Sprache zählen auf das Tageslimit von OpenSubtitles.com.",
+        "row_sdh": "SDH",
         "st_extra_ext": "Weitere Video-Endungen:",
         "st_extra_ext_hint": "z. B. hevc, vp9 — zusätzlich zu mkv, mp4, avi, m4v, mov, wmv",
         "st_log_max": "Logdatei, max. MB:",
@@ -169,6 +181,8 @@ STRINGS = {
         "c_dl_err": "    Download-Fehler: {err}",
         "c_not_found": "    kein Untertitel gefunden [{lang}]",
         "c_sync_fail": "    Sync fehlgeschlagen — Untertitel unsynct übernommen",
+        "c_kept_unsynced": "    Ungesyncter Download behalten als {name}",
+        "c_sdh_none": "    keine SDH-Fassung verfügbar [{lang}]",
         "c_no_write": "Keine Schreibberechtigung im Ordner: {folder}",
         "c_detected": "{file}: kein Sprachkürzel im Namen, Sprache aus dem Text erkannt: {lang}",
         "c_undetected": "{file}: kein Sprachkürzel im Namen, Sprache nicht erkennbar — wird ignoriert",
@@ -235,6 +249,18 @@ STRINGS = {
         "st_check_updates": "Проверить обновления",
         "st_upd_on_start": "Проверять обновления при запуске",
         "st_embedded": "Встроенные дорожки субтитров считаются имеющимися",
+        "st_keep_unsynced": "Дополнительно сохранять несинхронизированный файл",
+        "tt_keep_unsynced": "Сохраняет субтитры с исходным таймингом рядом с видео\n"
+                            "как <видео>.<язык>.unsynced.srt, вдобавок к синхронизированным.\n"
+                            "Пригодится для ручной синхронизации, если автоматическая не удалась.\n"
+                            "Плееры покажут файл как вторую дорожку.",
+        "st_sdh_extra": "Дополнительно загружать субтитры SDH",
+        "tt_sdh_extra": "Субтитры SDH описывают также звуки, музыку и говорящих, для глухих и слабослышащих.\n"
+                        "Для каждого языка ищется второй файл и сохраняется как <видео>.<язык>.sdh.srt.\n"
+                        "В таблице он показан отдельной строкой. Чаще всего есть только на английском;\n"
+                        "если ничего не найдено, это не ошибка.\n"
+                        "Две загрузки на язык учитываются в дневном лимите OpenSubtitles.com.",
+        "row_sdh": "SDH",
         "st_extra_ext": "Другие расширения видео:",
         "st_extra_ext_hint": "например hevc, vp9 — в дополнение к mkv, mp4, avi, m4v, mov, wmv",
         "st_log_max": "Файл лога, макс. МБ:",
@@ -300,6 +326,8 @@ STRINGS = {
         "c_dl_err": "    Ошибка загрузки: {err}",
         "c_not_found": "    субтитры не найдены [{lang}]",
         "c_sync_fail": "    Синхронизация не удалась — субтитры сохранены без синхронизации",
+        "c_kept_unsynced": "    Несинхронизированный файл сохранён как {name}",
+        "c_sdh_none": "    версия SDH недоступна [{lang}]",
         "c_no_write": "Нет прав на запись в папку: {folder}",
         "c_detected": "{file}: в имени нет кода языка, язык определён по тексту: {lang}",
         "c_undetected": "{file}: в имени нет кода языка, язык определить не удалось — файл пропущен",
@@ -366,6 +394,18 @@ STRINGS = {
         "st_check_updates": "Check for updates",
         "st_upd_on_start": "Check for updates on start",
         "st_embedded": "Embedded subtitle tracks count as present",
+        "st_keep_unsynced": "Also keep the unsynced download",
+        "tt_keep_unsynced": "Saves the subtitle with its original timing next to the video\n"
+                            "as <video>.<lang>.unsynced.srt, in addition to the synced one.\n"
+                            "Useful for a manual sync if the automatic one fails.\n"
+                            "Players will list it as a second track.",
+        "st_sdh_extra": "Also get SDH subtitles",
+        "tt_sdh_extra": "SDH subtitles also describe sounds, music and speakers, for the deaf and hard of hearing.\n"
+                        "Searches a second subtitle per language and saves it as <video>.<lang>.sdh.srt.\n"
+                        "The table lists it in a row of its own. Mostly available in English only;\n"
+                        "finding none is not an error.\n"
+                        "Two downloads per language count against the daily limit of OpenSubtitles.com.",
+        "row_sdh": "SDH",
         "st_extra_ext": "More video extensions:",
         "st_extra_ext_hint": "e.g. hevc, vp9 — in addition to mkv, mp4, avi, m4v, mov, wmv",
         "st_log_max": "Log file, max. MB:",
@@ -431,6 +471,8 @@ STRINGS = {
         "c_dl_err": "    Download error: {err}",
         "c_not_found": "    no subtitles found [{lang}]",
         "c_sync_fail": "    Sync failed — subtitle saved unsynced",
+        "c_kept_unsynced": "    Unsynced download kept as {name}",
+        "c_sdh_none": "    no SDH subtitle available [{lang}]",
         "c_no_write": "No write permission in folder: {folder}",
         "c_detected": "{file}: no language tag in the name, language detected from the text: {lang}",
         "c_undetected": "{file}: no language tag in the name and the language could not be detected — ignored",

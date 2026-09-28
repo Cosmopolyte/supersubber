@@ -392,6 +392,7 @@ class App(_Root):
         tsb.pack(side="right", fill="y")
         self.table.pack(side="left", fill="both", expand=True)
         self._row_items: dict[str, core.Item] = {}
+        self._sdh_rows: dict[str, str] = {}           # Video-Zeile → SDH-Zeile darunter
         self._imdb_btns: dict[str, tuple] = {}
         self._table_langs = []
         self._setup_columns([c for c, v in self.lang_sel.items() if v.get()])
@@ -567,6 +568,7 @@ class App(_Root):
         self._setup_columns(langs)
         self.table.delete(*self.table.get_children())
         self._row_items = {}
+        self._sdh_rows = {}
         self.start_btn.state(["disabled"])
         self.cancel.clear()
         self._log_sep(folder)
@@ -631,18 +633,32 @@ class App(_Root):
         self.table.column("imdb", width=175, minwidth=120, stretch=False, anchor="w")
 
     def _row_values(self, it: core.Item) -> tuple[list, str]:
-        vals = [it.video.name, it.recognized or ("—" if it.langs else "")]
+        vals = [it.video.name, it.recognized or ("—" if it.wanted else "")]
         for l in self._table_langs:
-            st = it.status.get(l)
-            vals.append("…" if st == "pending" else (f"{self._SYM.get(st, '')} {self.t('s_' + st)}" if st else ""))
+            vals.append(self._cell(it.status.get(l)))
         vals.append(it.imdb_id or "")            # Buttons liegen als Overlay über dieser Zelle
-        if not it.langs:
+        live = ("found", "synced", "suspect", "unsynced")
+        if it.settled:
             tag = "present"
-        elif not any(it.status.get(l) in ("found", "synced", "suspect", "unsynced") for l in it.langs):
-            tag = "none"
-        else:
+        elif any(it.status.get(l) in live for l in it.langs) or any(it.sdh_status.get(l) in live for l in it.sdh_langs):
             tag = "ok"
+        else:
+            tag = "none"
         return vals, tag
+
+    def _cell(self, st: str | None) -> str:
+        if not st:
+            return ""
+        return "…" if st == "pending" else f"{self._SYM.get(st, '')} {self.t('s_' + st)}"
+
+    def _sdh_values(self, it: core.Item) -> tuple[list, str] | None:
+        """Zweite Zeile unter dem Video für die SDH-Fassungen — nur, wenn es etwas zu melden gibt.
+        Eine fehlende SDH-Fassung bleibt eine leere Zelle, nie ein ✖."""
+        if not any(it.sdh_status.get(l) for l in self._table_langs):
+            return None
+        vals = ["      " + self.t("row_sdh"), ""] + [self._cell(it.sdh_status.get(l)) for l in self._table_langs] + [""]
+        done = all(it.sdh_status.get(l) in (None, "present", "embedded") for l in self._table_langs)
+        return vals, "present" if done else "ok"
 
     def _toggle_present(self):
         self.cfg["show_present"] = bool(self.show_present.get())
@@ -652,14 +668,32 @@ class App(_Root):
     def _fill_table(self):
         self.table.delete(*self.table.get_children())
         self._row_items = {}
+        self._sdh_rows = {}
         if not self.scan:
             return
-        items = self.scan.items if self.show_present.get() else [it for it in self.scan.items if it.langs]
+        items = self.scan.items if self.show_present.get() else [it for it in self.scan.items if not it.settled]
         for i, it in enumerate(items):
             vals, tag = self._row_values(it)
-            iid = self.table.insert("", "end", values=vals, tags=(tag, "odd" if i % 2 else "even"))
+            zebra = "odd" if i % 2 else "even"
+            iid = self.table.insert("", "end", values=vals, tags=(tag, zebra))
             self._row_items[iid] = it
+            self._sync_sdh_row(iid, it, zebra)
         self.after_idle(self._place_imdb_buttons)
+
+    def _sync_sdh_row(self, iid: str, it: core.Item, zebra: str):
+        """SDH-Zeile direkt unter der Video-Zeile anlegen, aktualisieren oder entfernen; gleiche Streifenfarbe."""
+        sdh = self._sdh_values(it)
+        row = self._sdh_rows.get(iid)
+        if sdh is None:
+            if row:
+                self.table.delete(row)
+                del self._sdh_rows[iid]
+            return
+        vals, tag = sdh
+        if row:
+            self.table.item(row, values=vals, tags=(tag, zebra))
+        else:
+            self._sdh_rows[iid] = self.table.insert("", self.table.index(iid) + 1, values=vals, tags=(tag, zebra))
 
     def _refresh_rows(self, items: list):
         for iid, it in self._row_items.items():
@@ -667,6 +701,7 @@ class App(_Root):
                 vals, tag = self._row_values(it)
                 zebra = [t for t in self.table.item(iid, "tags") if t in ("odd", "even")]
                 self.table.item(iid, values=vals, tags=(tag, *zebra))
+                self._sync_sdh_row(iid, it, zebra[0] if zebra else "even")
         self.after_idle(self._place_imdb_buttons)
 
     def _place_imdb_buttons(self):
@@ -679,7 +714,7 @@ class App(_Root):
                 b1.destroy(); b2.destroy(); del self._imdb_btns[iid]
         busy = bool(self.worker and self.worker.is_alive())
         for iid, it in self._row_items.items():
-            bbox = self.table.bbox(iid, "imdb") if it.langs else None
+            bbox = self.table.bbox(iid, "imdb") if it.wanted else None
             if iid not in self._imdb_btns:
                 b1 = ttk.Button(self.table, style="Cell.TButton", command=lambda it=it: self._imdb_popup(it))
                 b2 = ttk.Button(self.table, text="✕", style="Cell.TButton", width=2,
@@ -766,7 +801,7 @@ class App(_Root):
         e = ttk.Entry(f, textvariable=var, width=46)
         e.pack(anchor="w"); e.focus_set(); e.select_range(0, "end")
         show = getattr(it.v, "series", None) if it.v is not None else None
-        siblings = [o for o in (self.scan.items if self.scan else []) if o is not it and o.langs
+        siblings = [o for o in (self.scan.items if self.scan else []) if o is not it and o.wanted
                     and o.v is not None and getattr(o.v, "series", None) == show] if show else []
         all_var = tk.BooleanVar(value=bool(siblings))
         if siblings:
@@ -797,6 +832,9 @@ class App(_Root):
             it.imdb_id, it.imdb_source = (ttid, "manual") if ttid else (None, "")
             for l in it.langs:
                 it.status[l] = "pending"
+            for l in it.sdh_langs:
+                if it.sdh_status.get(l):
+                    it.sdh_status[l] = "pending"
         self._refresh_rows(items)
         self.status.config(text=self.t("rescanning"))
         self.bar.pulse()
@@ -858,7 +896,9 @@ class App(_Root):
                 if not video:
                     return
                 video = os.path.normpath(video)
-        m = re.search(r"\.([a-z]{2}(?:-[a-z]{2})?)\.(?:srt|ass|ssa)$", os.path.basename(sub), re.IGNORECASE)
+        # auch der aufbewahrte rohe Download trägt seine Sprache: Film.en.unsynced.srt, Film.en.sdh.unsynced.srt
+        m = re.search(r"\.([a-z]{2}(?:-[a-z]{2})?)(?:\.sdh)?(?:\.unsynced)?\.(?:srt|ass|ssa)$",
+                      os.path.basename(sub), re.IGNORECASE)
         # Regionalcodes normalisieren: pt-br → pt-BR
         lang = (m.group(1)[:2].lower() + m.group(1)[2:].upper()) if m \
             else next((c for c, v in self.lang_sel.items() if v.get()), None)
@@ -1047,13 +1087,17 @@ class App(_Root):
         # -- Programm: Verhalten, Updates, Version
         f3 = card(self.t("sec_program"))
 
-        def check(var_name: str, key: str, pady) -> tk.BooleanVar:
-            var = tk.BooleanVar(value=bool(self.cfg.get(var_name, True)))
-            tk.Checkbutton(f3, text=self.t(key), variable=var, bg=CARD, fg=LIGHT, activebackground=CARD,
-                           activeforeground=LIGHT, selectcolor=CHECK_BG, highlightthickness=0, font=(UI_FONT, 9))\
-                .pack(anchor="w", padx=6, pady=pady)
+        def check(var_name: str, key: str, pady, default: bool = True, tip: str = "") -> tk.BooleanVar:
+            var = tk.BooleanVar(value=bool(self.cfg.get(var_name, default)))
+            cb = tk.Checkbutton(f3, text=self.t(key), variable=var, bg=CARD, fg=LIGHT, activebackground=CARD,
+                                activeforeground=LIGHT, selectcolor=CHECK_BG, highlightthickness=0, font=(UI_FONT, 9))
+            cb.pack(anchor="w", padx=6, pady=pady)
+            if tip:
+                self._tooltip(cb, self.t(tip))
             return var
         emb_var = check("embedded_counts", "st_embedded", (0, 2))
+        keep_var = check("keep_unsynced", "st_keep_unsynced", (0, 2), default=False, tip="tt_keep_unsynced")
+        sdh_var = check("sdh_extra", "st_sdh_extra", (0, 2), default=False, tip="tt_sdh_extra")
         upd_var = check("check_updates_on_start", "st_upd_on_start", (0, 6))
         g3 = ttk.Frame(f3); g3.pack(fill="x", padx=10, pady=(0, 6))
         ttk.Label(g3, text=self.t("st_theme")).grid(row=0, column=0, sticky="w", pady=3)
@@ -1083,6 +1127,8 @@ class App(_Root):
             self.cfg["ui_language"] = next((c for c, n in i18n.UI_LANGS.items() if n == ui_box.get()), "en")
             self.cfg["check_updates_on_start"] = bool(upd_var.get())
             self.cfg["embedded_counts"] = bool(emb_var.get())
+            self.cfg["keep_unsynced"] = bool(keep_var.get())
+            self.cfg["sdh_extra"] = bool(sdh_var.get())
             self.cfg["video_extensions_extra"] = ext_var.get().strip()
             try:
                 self.cfg["log_max_mb"] = max(1, min(500, int(float(log_var.get().replace(",", ".")))))
