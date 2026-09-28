@@ -675,16 +675,51 @@ def _title_from_candidates(cands: list, episode: bool) -> str:
     return f"{name} · {year}" if year else name
 
 
+def _name_complete(name: str) -> bool:
+    """Sagt der Dateiname für sich schon alles? Serie: Titel, Staffel und Folge, der Titel vor der Folgenkennung —
+    bei `S03E03 Alles auf Sieg.mkv` ist der Text dahinter der Episodentitel, nicht die Serie. Film: Titel und Jahr.
+    Dann zählt nur der Dateiname, sonst der ganze Pfad: `S03E03.mkv`, `myMovie.mkv` und Scene-Kurznamen
+    brauchen den Ordner."""
+    try:
+        from guessit import guessit
+        g = guessit(name, {"advanced": True})
+        title = g.get("title")
+        if title is None or isinstance(title, list) or not str(title.value).strip():
+            return False
+        if g.get("type") is not None and g["type"].value == "episode":
+            marks = [g.get("season"), g.get("episode")]
+        else:
+            marks = [g.get("year")]
+        if any(m is None for m in marks):
+            return False
+        starts = [(m[0] if isinstance(m, list) else m).start for m in marks]
+        return title.start < min(starts)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _scan_video(path: Path):
     """Wie subliminal.scan_video, aber auch für Endungen, die subliminal nicht kennt (z. B. .hevc, .vp9 aus den
-    Settings): dann Erkennung aus dem Namen plus Dateigröße — der Hash rechnet ohnehin auf jeder Datei."""
+    Settings): dann Erkennung aus dem Namen plus Dateigröße — der Hash rechnet ohnehin auf jeder Datei.
+    Erkannt wird aus dem Dateinamen, wenn er vollständig ist, sonst aus dem ganzen Pfad. Ein Ordner mit eigenem
+    Titel überstimmt die Datei sonst: For.All.Mankind.S03E03 im Ordner Leonor.Will.Never.Die.2022 (Cosmo, 2026-09-28)."""
     from subliminal import scan_video
     from subliminal.core import scan_name
     from subliminal.video import VIDEO_EXTENSIONS
+    name = path.name if _name_complete(path.name) else None
+    _LOG.debug("%s: recognized from %s", path.name, "file name" if name else "full path")
     if path.name.lower().endswith(VIDEO_EXTENSIONS):
-        return scan_video(str(path))
-    v = scan_name(str(path))
-    v.size = path.stat().st_size
+        v = scan_video(str(path), name=name)
+    else:
+        v = scan_name(str(path), name=name)
+        v.size = path.stat().st_size
+    if name and not getattr(v, "release_group", None):
+        # die Release-Gruppe steht oft nur im Ordner — übernehmen, wenn der Ordner dasselbe Werk meint
+        whole = scan_name(str(path))
+        same = lambda a, b: str(getattr(a, "series", None) or getattr(a, "title", "")).lower() == \
+            str(getattr(b, "series", None) or getattr(b, "title", "")).lower()  # noqa: E731
+        if type(whole) is type(v) and same(whole, v):
+            v.release_group = getattr(whole, "release_group", None)
     return v
 
 
