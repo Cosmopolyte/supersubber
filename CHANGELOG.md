@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.6.0 — unreleased
+## 1.6.0 — 2026-09-28
 - Fix: a new search requested while another one was still running was dropped without a word — a second language ticked right after the first, or a folder dropped during a search. The request is now remembered; a running search is cancelled and restarted with the current selection.
 - Dropping video files now means those files: one video or several marked ones are searched on their own, no longer the whole folder around them. Dropping a folder works as before. The command line accepts a single video as well.
 - Changing the subtitle languages no longer starts the search over. A language that is unticked just disappears from the table; for an added one only that language is looked up, recognition and the hits of the other languages are kept.
