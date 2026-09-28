@@ -238,6 +238,9 @@ class App(_Root):
         self.scan: core.Scan | None = None      # Ergebnis des Vorlaufs (Tabelle)
         self._scan_gen = 0                       # verwirft veraltete Vorlauf-Ergebnisse
         self._auto_run = bool(folder)            # Kommandozeile: nach dem Vorlauf sofort starten
+        self._files: list[str] | None = None     # einzeln hineingezogene Videos — dann zählt nicht der Ordner
+        self._files_field = ""                   # Inhalt des Pfadfelds, zu dem diese Auswahl gehört
+        self._scan_key: tuple = ()               # wofür der aktuelle Vorlauf gilt: Pfadfeld + Dateiauswahl
         self._table_langs: list[str] = []
         self._tip: tk.Toplevel | None = None
         self._tip_cell = None
@@ -349,7 +352,8 @@ class App(_Root):
         self._tooltip(browse, self.t("tt_browse"))
         fe = ttk.Entry(top, textvariable=self.folder_var)
         fe.pack(side="left", fill="x", expand=True)
-        fe.bind("<Return>", lambda e: self._trigger_scan())
+        # Enter im Feld nimmt den Pfad beim Wort — eine frühere Dateiauswahl gilt dann nicht mehr
+        fe.bind("<Return>", lambda e: (setattr(self, "_files", None), self._trigger_scan()))
 
         drop_h = tkfont.Font(font=(UI_FONT, 11, "bold")).metrics("linespace") * 2 + 64   # Pfeil + zwei Zeilen
         self.drop = tk.Canvas(card1, height=drop_h, bg=CARD, highlightthickness=0, cursor="hand2")
@@ -477,8 +481,73 @@ class App(_Root):
         self.cfg["languages"] = [c for c, v in self.lang_sel.items() if v.get()]
         config.save(self.cfg)
         self._update_lang_btn()
-        if os.path.isdir(self.folder_var.get().strip().strip('"')):
-            self._trigger_scan(auto=False)   # andere Sprachen = anderer Vorlauf
+        field, files = self._target()
+        if not (os.path.isdir(field) or files):
+            return
+        if self._can_update_langs(field, files):
+            self._update_langs()             # nur die geänderten Sprachen, Erkennung und übrige Treffer bleiben
+        else:
+            self._trigger_scan(auto=False)
+
+    def _target(self) -> tuple[str, list | None]:
+        """Pfadfeld und Dateiauswahl. Die Auswahl gilt nur, solange das Feld noch zeigt, was beim Hineinziehen
+        gesetzt wurde; steht im Feld selbst eine Datei, zählt nur sie."""
+        field = self.folder_var.get().strip().strip('"')
+        if self._files and field == self._files_field:
+            return field, list(self._files)
+        self._files = None
+        return field, ([field] if os.path.isfile(field) else None)
+
+    def _can_update_langs(self, field: str, files: list | None) -> bool:
+        sc = self.scan
+        return bool(sc and not sc.error and not sc.cancelled and sc.items
+                    and not (self.worker and self.worker.is_alive())
+                    and self._scan_key == (field, tuple(files or ()))
+                    and any(v.get() for v in self.lang_sel.values())
+                    and sc.split == bool(self.cfg.get("sdh_extra", False))
+                    and sc.use_embedded == bool(self.cfg.get("embedded_counts", True)))
+
+    def _update_langs(self):
+        sc = self.scan
+        langs = [c for c, v in self.lang_sel.items() if v.get()]
+        added = [l for l in langs if l not in sc.languages]
+        ui = self.ui
+        tr = lambda key, **kw: i18n.tr(ui, key, **kw)  # noqa: E731
+        self.cancel.clear()
+        if not added:
+            # nur abgewählt: nichts zu suchen
+            core.update_languages(sc, langs, self.cfg, lambda m, i, n: None, self._log, self.cancel, tr)
+            self._show_scan(sc, auto=False)
+            return
+        self._log_sep(", ".join(i18n.lang_name_ui(ui, l) for l in added))
+        self.start_btn.state(["disabled"])
+        self.status.config(text=self.t("scanning"))
+
+        def work():
+            core.update_languages(sc, langs, self.cfg,
+                                  progress=lambda m, i, n: self.q.put(("progress", m, i, n)),
+                                  log=lambda s: self.q.put(("log", s)), cancel=self.cancel, tr=tr)
+            self.q.put(("langs_done", sc))
+
+        self._worker_kind = "scan"
+        self.worker = threading.Thread(target=work, daemon=True)
+        self._busy(True)
+        self.worker.start()
+
+    def _langs_finished(self, sc: core.Scan):
+        self._busy(False)
+        self.spinner.config(text="")
+        if self._scan_pending or sc.cancelled:
+            # unvollständig — der Stand taugt nicht mehr als Grundlage
+            self.scan = None
+            self._scan_key = ()
+            self.table.delete(*self.table.get_children())
+            self._row_items, self._sdh_rows = {}, {}
+            if not self._run_pending():
+                self.bar.idle(self.t("ready"))
+                self.status.config(text=self.t("ready"))
+            return
+        self._show_scan(sc, auto=False)
 
     def _update_lang_btn(self):
         sel = [i18n.lang_name_ui(self.ui, c) for c, v in self.lang_sel.items() if v.get()]
@@ -567,11 +636,13 @@ class App(_Root):
                 self.cancel.set()
             return
         self._scan_pending = None
-        folder = self.folder_var.get().strip().strip('"')
+        folder, files = self._target()
         langs = [c for c, v in self.lang_sel.items() if v.get()]
-        if not os.path.isdir(folder) or not langs:
-            logfile.log.info("scan not started: folder=%r is_dir=%s languages=%s", folder, os.path.isdir(folder), langs)
+        if not (os.path.isdir(folder) or files) or not langs:
+            logfile.log.info("scan not started: path=%r is_dir=%s files=%s languages=%s", folder,
+                             os.path.isdir(folder), files, langs)
             return
+        self._scan_key = (folder, tuple(files or ()))
         self._scan_auto = auto
         self._worker_kind = "scan"
         if self.cfg.get("clear_history_on_scan", True):
@@ -593,7 +664,7 @@ class App(_Root):
             sc = core.scan(folder, langs, self.cfg,
                            progress=lambda m, i, n: self.q.put(("progress", m, i, n)),
                            log=lambda s: self.q.put(("log", s)), cancel=self.cancel,
-                           tr=lambda key, **kw: i18n.tr(ui, key, **kw))
+                           tr=lambda key, **kw: i18n.tr(ui, key, **kw), files=files)
             self.q.put(("scan_done", gen, sc))
 
         self.worker = threading.Thread(target=work, daemon=True)
@@ -607,20 +678,24 @@ class App(_Root):
         self.spinner.config(text="")
         if self._run_pending():
             return
+        self._show_scan(sc, auto=self._scan_auto)
+
+    def _show_scan(self, sc: core.Scan, auto: bool):
+        """Ergebnis eines Vorlaufs in die Tabelle; auto erlaubt den automatischen Start."""
         self.scan = sc
         if sc.error:
             self.bar.idle(self.t("error"))
             self._log_raw("✖  " + sc.error, ("fail",))
             self.status.config(text=self.t("error")); return
+        self._setup_columns(sc.languages)
         self._fill_table()
         n = len(sc.items)
         f = len(sc.runnable)
         p = sc.skipped
         self.bar.idle(self.t("ready"))
         self.status.config(text=self.t("scan_summary", n=n, f=f, m=n - f - p, p=p))
-        if f:
-            self.start_btn.state(["!disabled"])
-        if self._auto_run or (self._scan_auto and self.cfg.get("auto_start", False)):
+        self.start_btn.state(["!disabled"] if f else ["disabled"])
+        if self._auto_run or (auto and self.cfg.get("auto_start", False)):
             self._auto_run = False
             if f:
                 self.start()
@@ -903,10 +978,22 @@ class App(_Root):
             # Untertitel-File → lokalen Sync starten (Video ggf. automatisch/per Dialog)
             self._local_sync(subs[0], vids[0] if vids else None)
             return
-        if paths:
-            p = paths[0]
-            self.folder_var.set(p if os.path.isdir(p) else os.path.dirname(p))
-            self._trigger_scan()
+        dirs = [p for p in paths if os.path.isdir(p)]
+        if dirs:
+            self._files = None
+            self.folder_var.set(dirs[0])
+        elif vids:
+            # einzelne Videos hineingezogen: nur sie, nicht der ganze Ordner. Das Feld zeigt die Datei,
+            # bei mehreren ihren Ordner — die Tabelle zeigt, was wirklich gemeint ist
+            self._files = [os.path.normpath(p) for p in vids]
+            self._files_field = self._files[0] if len(vids) == 1 else os.path.dirname(self._files[0])
+            self.folder_var.set(self._files_field)
+        elif paths:
+            self._files = None
+            self.folder_var.set(os.path.dirname(paths[0]))
+        else:
+            return
+        self._trigger_scan()
 
     def _local_sync(self, sub: str, video: str | None):
         if self.worker and self.worker.is_alive():
@@ -1007,6 +1094,8 @@ class App(_Root):
                         self.status.config(text=m)
                 elif item[0] == "scan_done":
                     self._scan_finished(item[1], item[2]); return
+                elif item[0] == "langs_done":
+                    self._langs_finished(item[1]); return
                 elif item[0] == "rescan_item":
                     self._refresh_rows([item[1]])
                 elif item[0] == "rescan_done":

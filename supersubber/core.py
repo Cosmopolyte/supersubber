@@ -517,6 +517,7 @@ class Item:
     error: str | None = None
     # Nur mit der Option „SDH zusätzlich": normal und SDH werden je Sprache getrennt geführt
     split: bool = False
+    streams: list | None = None                       # ffprobe-Daten der Untertitelspuren, einmal gelesen
     sdh_langs: list = field(default_factory=list)     # Sprachen, für die eine SDH-Fassung gesucht wird
     sdh_found: dict = field(default_factory=dict)     # lang → True/False
     sdh_status: dict = field(default_factory=dict)    # lang → present|embedded|found|synced|suspect|unsynced; fehlt = nichts zu melden
@@ -540,6 +541,8 @@ class Scan:
     noaccess: list[str] = field(default_factory=list)
     cancelled: bool = False
     error: str | None = None
+    use_embedded: bool = True                         # Einstellungen, mit denen der Vorlauf lief
+    split: bool = False
 
     @property
     def skipped(self) -> int:
@@ -686,44 +689,52 @@ def _scan_video(path: Path):
 
 
 def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
-                 exts: frozenset = VIDEO_EXT) -> None:
-    """Erkennen + NFO + Provider-Suche + Bewertung für ein Item. Lädt nichts herunter."""
+                 exts: frozenset = VIDEO_EXT, only: list | None = None) -> None:
+    """Erkennen + NFO + Provider-Suche + Bewertung für ein Item. Lädt nichts herunter.
+    only: nur diese Sprachen suchen und bewerten, alles Übrige am Item bleibt stehen — für Sprachen, die
+    nach dem Vorlauf dazugewählt werden. Die Erkennung läuft dann nur, wenn sie noch fehlt."""
     from babelfish import Language
     from subliminal import refine
     from subliminal.score import episode_scores, movie_scores
     from subliminal.video import Episode
 
-    it.candidates, it.found, it.error = [], {}, None
-    it.sdh_found = {}
-    for lang in it.sdh_langs:
+    fresh = only is None or it.v is None
+    langs = [l for l in it.langs if only is None or l in only]
+    sdh_langs = [l for l in it.sdh_langs if only is None or l in only]
+    if only is None:
+        it.candidates, it.found, it.sdh_found = [], {}, {}
+    it.error = None
+    for lang in sdh_langs:
         it.sdh_status.pop(lang, None)
     try:
-        v = _scan_video(it.video)
-        refine(v, refiners=("hash",))
-        it.v = v
-        it.recognized = _recognized(v)
-        _LOG.debug("%s: guessed %s %r size=%s hashes=%s", it.video.name, type(v).__name__, it.recognized,
-                   getattr(v, "size", None), sorted((getattr(v, "hashes", None) or {}).keys()))
-        if manual_id:
-            it.imdb_id, it.imdb_source = manual_id, "manual"
-        elif not it.imdb_id:
-            nfo = _imdb_from_nfo(it.video, isinstance(v, Episode), exts)
-            if nfo:
-                it.imdb_id, it.imdb_source = nfo, "nfo"
-                log(tr("c_imdb_nfo", id=nfo))
-        if it.imdb_id:
-            v.imdb_id = it.imdb_id
+        if fresh:
+            v = _scan_video(it.video)
+            refine(v, refiners=("hash",))
+            it.v = v
+            it.recognized = _recognized(v)
+            _LOG.debug("%s: guessed %s %r size=%s hashes=%s", it.video.name, type(v).__name__, it.recognized,
+                       getattr(v, "size", None), sorted((getattr(v, "hashes", None) or {}).keys()))
+            if manual_id:
+                it.imdb_id, it.imdb_source = manual_id, "manual"
+            elif not it.imdb_id:
+                nfo = _imdb_from_nfo(it.video, isinstance(v, Episode), exts)
+                if nfo:
+                    it.imdb_id, it.imdb_source = nfo, "nfo"
+                    log(tr("c_imdb_nfo", id=nfo))
+            if it.imdb_id:
+                v.imdb_id = it.imdb_id
+                if isinstance(v, Episode):
+                    v.series_imdb_id = it.imdb_id
+            # Mindest-Score: Serien Serie+Staffel+Episode, Filme Titel+Jahr (ohne Jahr im Namen nur Titel).
+            # Hash- und IMDb-Treffer liegen darüber. Ohne Schwelle gewinnt jeder Titel-Teilstring.
             if isinstance(v, Episode):
-                v.series_imdb_id = it.imdb_id
-        # Mindest-Score: Serien Serie+Staffel+Episode, Filme Titel+Jahr (ohne Jahr im Namen nur Titel).
-        # Hash- und IMDb-Treffer liegen darüber. Ohne Schwelle gewinnt jeder Titel-Teilstring.
-        if isinstance(v, Episode):
-            it.min_score = episode_scores["series"] + episode_scores["season"] + episode_scores["episode"]
-        else:
-            it.min_score = movie_scores["title"] + (movie_scores["year"] if getattr(v, "year", None) else 0)
-        want = {Language.fromietf(l) for l in it.langs + it.sdh_langs}
-        it.candidates = list(pool.list_subtitles(v, want))
-        if it.imdb_id:
+                it.min_score = episode_scores["series"] + episode_scores["season"] + episode_scores["episode"]
+            else:
+                it.min_score = movie_scores["title"] + (movie_scores["year"] if getattr(v, "year", None) else 0)
+        v = it.v
+        want = {Language.fromietf(l) for l in langs + sdh_langs}
+        it.candidates = list(it.candidates) + (list(pool.list_subtitles(v, want)) if want else [])
+        if fresh and it.imdb_id:
             # mit ID zählt, was die Provider zur ID sagen — nicht der aus dem Pfad geratene Titel
             se = _se(v) if isinstance(v, Episode) else ""
             by_id = [s for s in it.candidates if _id_match(s, it.imdb_id, isinstance(v, Episode))]
@@ -739,13 +750,13 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
                        s.id, score(s, v), sorted(s.get_matches(v)), bool(getattr(s, "hearing_impaired", False)),
                        _release_name(s))
         normal, sdh = _pick(it.candidates, it.split, False), _pick(it.candidates, it.split, True)
-        for lang in it.langs:
+        for lang in langs:
             L = Language.fromietf(lang)
             best = max((score(s, v) for s in normal if s.language == L), default=0)
             it.found[lang] = best >= it.min_score
             it.status[lang] = "found" if it.found[lang] else "none"
             _LOG.debug("%s: %s best=%d -> %s", it.video.name, lang, best, it.status[lang])
-        for lang in it.sdh_langs:
+        for lang in sdh_langs:
             # eine fehlende SDH-Fassung ist kein Fehler: kein Status, keine Zeile
             L = Language.fromietf(lang)
             best = max((score(s, v) for s in sdh if s.language == L), default=0)
@@ -756,25 +767,125 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
     except Exception as e:  # noqa: BLE001
         _LOG.exception("%s: search failed", it.video.name)
         it.error = f"{type(e).__name__}: {e}"
-        for lang in it.langs:
+        for lang in langs:
             it.found[lang] = False
             it.status[lang] = "none"
-        for lang in it.sdh_langs:
+        for lang in sdh_langs:
             it.sdh_found[lang] = False
         log(tr("c_dl_err", err=it.error))
 
 
+def _presence(it: Item, languages: list, use_embedded: bool, log: Log, tr: Tr, announce: bool = True) -> None:
+    """Für diese Sprachen festhalten, was schon da ist — Datei neben dem Video oder eingebettete Spur — und was
+    gesucht werden muss. Die ffprobe-Daten bleiben am Item, eine später dazugewählte Sprache braucht sie wieder."""
+    v = it.video
+    kind = "normal" if it.split else "any"
+    ext = external_subs(v, kind)
+    if it.streams is None:
+        it.streams = _embedded_streams(v) if use_embedded else []
+    emb = _embedded_pick(it.streams, kind)
+    if it.split:
+        ext_sdh, emb_sdh = external_subs(v, "sdh"), _embedded_pick(it.streams, "sdh")
+        for l in languages:
+            if l in ext_sdh:
+                it.sdh_status[l] = "present"
+            elif l in emb_sdh:
+                it.sdh_status[l] = "embedded"
+            else:
+                it.sdh_langs.append(l)
+        _LOG.debug("%s: sdh external=%s embedded=%s", v.name,
+                   {k: p.name for k, (p, _) in ext_sdh.items()}, emb_sdh)
+    _LOG.debug("%s: external=%s embedded=%s", v.name, {k: (p.name, how) for k, (p, how) in ext.items()}, emb)
+    if announce:
+        for lang, (p, how) in ext.items():
+            if how == "detected":
+                log(tr("c_detected", file=p.name, lang=lang))
+            elif how == "unknown":
+                log(tr("c_undetected", file=p.name))
+    for l in languages:
+        if l in ext and ext[l][1] != "unknown":
+            it.existing[l] = ext[l][1] if ext[l][1] == "detected" else "file"
+            it.status[l] = "present"
+        elif l in emb:
+            it.existing[l] = "embedded"
+            it.status[l] = "embedded"
+        else:
+            it.langs.append(l)
+
+
+def update_languages(sc: Scan, languages: list[str], cfg: dict, progress: Progress, log: Log,
+                     cancel: threading.Event, tr: Tr = _tr_fallback) -> Scan:
+    """Sprachauswahl nach dem Vorlauf geändert: abgewählte Sprachen fallen nur weg; für dazugewählte wird
+    geprüft, was schon da ist, und nur für sie bei den Providern gesucht. Erkennung, Hash und die Treffer der
+    übrigen Sprachen bleiben stehen. Bricht der Nutzer ab, ist sc.cancelled gesetzt und der Vorlauf unvollständig."""
+    try:
+        from subliminal import ProviderPool
+        removed = [l for l in sc.languages if l not in languages]
+        added = [l for l in languages if l not in sc.languages]
+        _LOG.info("languages changed: added=%s removed=%s", added, removed)
+        done = ("synced", "suspect", "unsynced")
+        for it in sc.items:
+            # nach einem Lauf: was geladen wurde, liegt jetzt als Datei da — wie es ein neuer Vorlauf sähe
+            for langs_, found, status in ((it.langs, it.found, it.status), (it.sdh_langs, it.sdh_found, it.sdh_status)):
+                for l in [l for l in langs_ if status.get(l) in done]:
+                    langs_.remove(l)
+                    found.pop(l, None)
+                    status[l] = "present"
+            for l in removed:
+                for d in (it.found, it.status, it.existing, it.sdh_found, it.sdh_status):
+                    d.pop(l, None)
+                for lst in (it.langs, it.sdh_langs):
+                    if l in lst:
+                        lst.remove(l)
+        sc.languages = [l for l in sc.languages if l not in removed]
+        if added:
+            _region_setup()
+            for it in sc.items:
+                _presence(it, added, sc.use_embedded, log, tr, announce=False)
+            todo = [it for it in sc.items if any(l in added for l in it.langs + it.sdh_langs)]
+            log(tr("c_found", v=len(sc.items), t=sum(1 for it in todo if any(l in added for l in it.langs)),
+                   langs=", ".join(added)))
+            if todo:
+                exts = video_exts(cfg)
+                providers, provider_configs = _providers(cfg, log, tr)
+                with ProviderPool(providers=providers, provider_configs=provider_configs) as pool:
+                    for i, it in enumerate(todo, 1):
+                        if cancel.is_set():
+                            sc.cancelled = True
+                            return sc
+                        progress(it.video.name, i, len(todo))
+                        _search_item(pool, it, log, tr, manual_id=it.imdb_id if it.imdb_source == "manual" else None,
+                                     exts=exts, only=added)
+                        log(tr("c_scan_item", name=it.video.name, rec=it.recognized or "?", hits=_hits(it)))
+        sc.languages = list(languages)
+        for it in sc.items:
+            it.langs.sort(key=languages.index)
+            it.sdh_langs.sort(key=languages.index)
+    except Exception as e:  # noqa: BLE001
+        _LOG.exception("language update failed")
+        sc.error = f"{type(e).__name__}: {e}"
+    return sc
+
+
 def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: Log,
-         cancel: threading.Event, tr: Tr = _tr_fallback) -> Scan:
-    """Vorlauf: Videos finden, erkennen, bei den Providern suchen, bewerten. Kein Download, kein Sync."""
+         cancel: threading.Event, tr: Tr = _tr_fallback, files: list | None = None) -> Scan:
+    """Vorlauf: Videos finden, erkennen, bei den Providern suchen, bewerten. Kein Download, kein Sync.
+    files: nur diese Videodateien statt des ganzen Ordners — wer einzelne Dateien hineinzieht, meint nur sie.
+    Eine Datei als folder gilt genauso."""
+    if files is None and os.path.isfile(folder):
+        files = [folder]
     sc = Scan(folder=folder, languages=list(languages))
     try:
         from subliminal import ProviderPool
         _region_setup()
         progress(tr("c_scan"), 0, 0)
         exts = video_exts(cfg)
-        _LOG.info("scan %s languages=%s exts=%s", folder, languages, sorted(exts))
-        videos = find_videos(folder, int(cfg.get("min_size_mb", 50)), exts)
+        _LOG.info("scan %s files=%s languages=%s exts=%s", folder, files, languages, sorted(exts))
+        if files is not None:
+            # ausdrücklich gewählte Dateien: nur die Endung zählt, Mindestgröße und Sample-Filter gelten nicht
+            videos = sorted({Path(f) for f in files if Path(f).suffix.lower() in exts and Path(f).is_file()})
+        else:
+            videos = find_videos(folder, int(cfg.get("min_size_mb", 50)), exts)
         if not videos:
             sc.error = tr("c_none")
             return sc
@@ -788,40 +899,12 @@ def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: 
                     log(tr("c_no_write", folder=d.name or str(d)))
         use_embedded = bool(cfg.get("embedded_counts", True))
         split = bool(cfg.get("sdh_extra", False))
-        kind = "normal" if split else "any"
+        sc.use_embedded, sc.split = use_embedded, split
         for v in videos:
             if not writable[v.parent]:
                 continue
             it = Item(video=v, langs=[], split=split)
-            ext = external_subs(v, kind)
-            streams = _embedded_streams(v) if use_embedded else []
-            emb = _embedded_pick(streams, kind)
-            if split:
-                ext_sdh, emb_sdh = external_subs(v, "sdh"), _embedded_pick(streams, "sdh")
-                for l in languages:
-                    if l in ext_sdh:
-                        it.sdh_status[l] = "present"
-                    elif l in emb_sdh:
-                        it.sdh_status[l] = "embedded"
-                    else:
-                        it.sdh_langs.append(l)
-                _LOG.debug("%s: sdh external=%s embedded=%s", v.name,
-                           {k: p.name for k, (p, _) in ext_sdh.items()}, emb_sdh)
-            _LOG.debug("%s: external=%s embedded=%s", v.name, {k: (p.name, how) for k, (p, how) in ext.items()}, emb)
-            for lang, (p, how) in ext.items():
-                if how == "detected":
-                    log(tr("c_detected", file=p.name, lang=lang))
-                elif how == "unknown":
-                    log(tr("c_undetected", file=p.name))
-            for l in languages:
-                if l in ext and ext[l][1] != "unknown":
-                    it.existing[l] = ext[l][1] if ext[l][1] == "detected" else "file"
-                    it.status[l] = "present"
-                elif l in emb:
-                    it.existing[l] = "embedded"
-                    it.status[l] = "embedded"
-                else:
-                    it.langs.append(l)
+            _presence(it, languages, use_embedded, log, tr)
             sc.items.append(it)
         todo = [it for it in sc.items if it.wanted]
         log(tr("c_found", v=len(videos), t=sum(1 for it in sc.items if it.langs), langs=", ".join(languages)))

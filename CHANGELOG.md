@@ -2,6 +2,8 @@
 
 ## 1.6.0 — unreleased
 - Fix: a new search requested while another one was still running was dropped without a word — a second language ticked right after the first, or a folder dropped during a search. The request is now remembered; a running search is cancelled and restarted with the current selection.
+- Dropping video files now means those files: one video or several marked ones are searched on their own, no longer the whole folder around them. Dropping a folder works as before. The command line accepts a single video as well.
+- Changing the subtitle languages no longer starts the search over. A language that is unticked just disappears from the table; for an added one only that language is looked up, recognition and the hits of the other languages are kept.
 - Fix: confirming the IMDb dialog with an unchanged ID no longer searches again.
 - New option "Start automatically after the search", off by default. It never fires after a mere change of the language selection.
 - New option "Clear the history when a new search starts", on by default. Only the window is cleared, the log file keeps everything.
