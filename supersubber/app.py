@@ -544,6 +544,7 @@ class App(_Root):
             self.table.delete(*self.table.get_children())
             self._row_items, self._sdh_rows = {}, {}
             if not self._run_pending():
+                self.start_btn.state(["!disabled"])
                 self.bar.idle(self.t("ready"))
                 self.status.config(text=self.t("ready"))
             return
@@ -971,6 +972,10 @@ class App(_Root):
             self._trigger_scan()
 
     def on_drop(self, event):
+        if self.worker and self.worker.is_alive() and self._worker_kind == "work":
+            # während Download und Sync gilt nichts Neues; während der Suche darf man sich umentscheiden
+            self.status.config(text=self.t("busy_drop"))
+            return
         paths = list(self.tk.splitlist(event.data))
         subs = [p for p in paths if os.path.splitext(p)[1].lower() in core.SUB_EXT]
         vids = [p for p in paths if os.path.splitext(p)[1].lower() in core.video_exts(self.cfg)]
@@ -1047,7 +1052,12 @@ class App(_Root):
 
     def start(self):
         if self.worker and self.worker.is_alive():
-            self.cancel.set(); self.status.config(text=self.t("cancelling")); return
+            if not self.cancel.is_set():
+                self.cancel.set()
+                self.status.config(text=self.t("cancelling"))
+                self.start_btn.state(["disabled"])    # ein Klick genügt; frei wird er wieder, wenn der Worker steht
+                self._log_raw(self.t("cancelled_by_user"), ("warn",))
+            return
         if not self.scan or not self.scan.runnable:
             self._trigger_scan(); return
         self.cancel.clear()
@@ -1109,14 +1119,21 @@ class App(_Root):
     def _finish(self, res: core.Result):
         self._busy(False)
         self.spinner.config(text="")
+        self.start_btn.state(["!disabled"])      # der Abbruch-Klick hat ihn gesperrt
         if res.error:
             self.bar.idle(self.t("error"))
             self._log_raw("✖  " + res.error, ("fail",))
             self.status.config(text=self.t("error")); return
         self.bar.set(1.0, "100 %")
         if self.scan:
+            rest = False
+            if res.cancelled:
+                # abgebrochen: Geholtes gilt als vorhanden, der Rest bleibt startbar
+                core.settle_done(self.scan)
+                rest = bool(self.scan.runnable)
             self._refresh_rows(self.scan.items)
-            self.start_btn.state(["disabled"])   # erledigt — neuer Lauf erst nach neuem Vorlauf
+            # erledigt — neuer Lauf erst nach neuem Vorlauf; nach einem Abbruch geht es mit dem Rest weiter
+            self.start_btn.state(["!disabled"] if rest else ["disabled"])
         if not any((res.synced, res.unsynced, res.suspect, res.missing, res.noaccess, res.cancelled)):
             self.status.config(text=self.t("res_all_have", n=res.skipped))
             return

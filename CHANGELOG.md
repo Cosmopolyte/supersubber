@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1 — unreleased
+- Cancel stops at once: a running sync is ended instead of finished first, nothing half done is left next to the video, and the history says that the user cancelled.
+- Fix: after a cancelled run the button turned back to "Start" but stayed disabled. It is enabled now and continues with what is left; what was already fetched counts as present.
+- While download and sync are running, dropped files and folders are ignored with a hint in the status line. During the search a new drop still replaces the running search.
+
 ## 1.6.0 — 2026-09-28
 - Fix: a new search requested while another one was still running was dropped without a word — a second language ticked right after the first, or a folder dropped during a search. The request is now remembered; a running search is cancelled and restarted with the current selection.
 - Dropping video files now means those files: one video or several marked ones are searched on their own, no longer the whole folder around them. Dropping a folder works as before. The command line accepts a single video as well.

@@ -323,19 +323,47 @@ def _cue_count(sub: Path) -> int:
         return 0
 
 
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """alass samt seinem ffmpeg beenden — ein verwaistes ffmpeg hielte sonst die Videodatei offen."""
+    try:
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+        else:
+            import signal
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except OSError:
+        pass
+    try:
+        proc.kill()
+    except OSError:
+        pass
+
+
 def _alass(video: Path, sub: Path, out: Path, log: Log, tr: Tr = _tr_fallback,
-           subprog: Callable[[float], None] | None = None) -> tuple[bool, bool]:
+           subprog: Callable[[float], None] | None = None,
+           cancel: threading.Event | None = None) -> tuple[bool, bool]:
     """Sync ausführen; alass-Fortschritt (Audio-Analyse) wird live an subprog (0..1) gemeldet.
-    Rückgabe: (erfolgreich, verdächtig) — verdächtig = mehrere Blöcke um Minuten verschoben."""
+    Rückgabe: (erfolgreich, verdächtig) — verdächtig = mehrere Blöcke um Minuten verschoben.
+    Wird cancel gesetzt, endet alass sofort; eine dabei entstandene Ausgabedatei wird entfernt."""
     env = dict(os.environ, ALASS_FFMPEG_PATH=_bin("ffmpeg"), ALASS_FFPROBE_PATH=_bin("ffprobe"))
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    existed = out.exists()
     try:
         proc = subprocess.Popen([_bin("alass-cli"), str(video), str(sub), str(out)],
                                 env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                text=True, encoding="utf-8", errors="replace", creationflags=flags)
+                                text=True, encoding="utf-8", errors="replace", creationflags=flags,
+                                start_new_session=sys.platform != "win32")
     except OSError as e:
         log(f"    alass: {e}")
         return False, False
+    if cancel is not None:
+        def watch():
+            while proc.poll() is None:
+                if cancel.wait(0.2):
+                    _kill_tree(proc)
+                    return
+        threading.Thread(target=watch, daemon=True).start()
     lines: list[str] = []
     buf = ""
     while True:
@@ -357,6 +385,14 @@ def _alass(video: Path, sub: Path, out: Path, log: Log, tr: Tr = _tr_fallback,
     if buf.strip():
         lines.append(buf)
     proc.wait()
+    if cancel is not None and cancel.is_set():
+        _LOG.info("alass %s: cancelled by user", video.name)
+        if not existed:
+            try:
+                out.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return False, False
     _LOG.debug("alass %s <- %s (exit %s): %s", video.name, sub.name, proc.returncode,
                " | ".join(l.strip() for l in lines if not re.match(r"\s*\d+ / \d+ \[", l)))
     big_shifts = 0
@@ -848,6 +884,18 @@ def _presence(it: Item, languages: list, use_embedded: bool, log: Log, tr: Tr, a
             it.langs.append(l)
 
 
+def settle_done(sc: Scan) -> None:
+    """Nach einem Lauf: was geladen wurde, liegt jetzt als Datei da — wie es ein neuer Vorlauf sähe.
+    Übrig bleibt in runnable nur, was noch nicht geholt ist."""
+    done = ("synced", "suspect", "unsynced")
+    for it in sc.items:
+        for langs_, found, status in ((it.langs, it.found, it.status), (it.sdh_langs, it.sdh_found, it.sdh_status)):
+            for l in [l for l in langs_ if status.get(l) in done]:
+                langs_.remove(l)
+                found.pop(l, None)
+                status[l] = "present"
+
+
 def update_languages(sc: Scan, languages: list[str], cfg: dict, progress: Progress, log: Log,
                      cancel: threading.Event, tr: Tr = _tr_fallback) -> Scan:
     """Sprachauswahl nach dem Vorlauf geändert: abgewählte Sprachen fallen nur weg; für dazugewählte wird
@@ -858,14 +906,8 @@ def update_languages(sc: Scan, languages: list[str], cfg: dict, progress: Progre
         removed = [l for l in sc.languages if l not in languages]
         added = [l for l in languages if l not in sc.languages]
         _LOG.info("languages changed: added=%s removed=%s", added, removed)
-        done = ("synced", "suspect", "unsynced")
+        settle_done(sc)
         for it in sc.items:
-            # nach einem Lauf: was geladen wurde, liegt jetzt als Datei da — wie es ein neuer Vorlauf sähe
-            for langs_, found, status in ((it.langs, it.found, it.status), (it.sdh_langs, it.sdh_found, it.sdh_status)):
-                for l in [l for l in langs_ if status.get(l) in done]:
-                    langs_.remove(l)
-                    found.pop(l, None)
-                    status[l] = "present"
             for l in removed:
                 for d in (it.found, it.status, it.existing, it.sdh_found, it.sdh_status):
                     d.pop(l, None)
@@ -1097,7 +1139,16 @@ def run_scan(sc: Scan, cfg: dict, progress: Progress, log: Log, cancel: threadin
                             except OSError as e:
                                 log(tr("c_dl_err", err=f"{type(e).__name__}: {e}"))
                         log(tr("c_syncing"))
-                        ok, suspect = _alass(it.video, dl, out, log, tr, subprog=lambda f: sp(0.4 + 0.58 * f))
+                        ok, suspect = _alass(it.video, dl, out, log, tr, subprog=lambda f: sp(0.4 + 0.58 * f),
+                                             cancel=cancel)
+                        if cancel.is_set() and not ok:
+                            # mitten im Sync abgebrochen: nichts Halbes hinterlassen
+                            if keep_unsynced:
+                                try:
+                                    raw.unlink(missing_ok=True)
+                                except OSError:
+                                    pass
+                            break
                         if ok and suspect:
                             status[lang] = "suspect"
                             res.suspect.append(f"{it.video.name}  [{label}]")
@@ -1110,6 +1161,9 @@ def run_scan(sc: Scan, cfg: dict, progress: Progress, log: Log, cancel: threadin
                             status[lang] = "unsynced"
                             res.unsynced.append(f"{it.video.name}  [{label}]")
                             log(tr("c_sync_fail"))
+                    if cancel.is_set():
+                        res.cancelled = True
+                        break
                     sp(1.0)
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
@@ -1172,7 +1226,10 @@ def run_local(video_path: str, sub_path: str, lang: str, cfg: dict, progress: Pr
             log(f"[1/1] {video.name}  [{lang}]  ←  {sub.name}")
             log(tr("c_syncing"))
             sp = (lambda f: frac(min(1.0, 0.03 + 0.97 * f))) if frac else None
-            ok, suspect = _alass(video, src, target, log, tr, subprog=sp)
+            ok, suspect = _alass(video, src, target, log, tr, subprog=sp, cancel=cancel)
+            if cancel.is_set() and not ok:
+                res.cancelled = True
+                return res
             if ok and suspect:
                 res.suspect.append(f"{video.name}  [{lang}]")
                 res.suspect_items.append((str(video), lang))
