@@ -456,7 +456,8 @@ class App(_Root):
         x0, x1 = (w - bw) // 2, (w + bw) // 2
         y0, y1 = 2, h - 2
         c.create_rectangle(x0, y0, x1, y1, fill=FIELD, width=0)
-        c.create_rectangle(x0 + 12, y0 + 10, x1 - 12, y1 - 10, dash=(7, 4), outline=TEAL, width=2)
+        # Punktraster wie unter Windows — dort ersetzt Tk jedes Muster bei Breite 2 durch feine Punkte, X11 zeichnet es wörtlich
+        c.create_rectangle(x0 + 12, y0 + 10, x1 - 12, y1 - 10, dash=(2, 4), outline=TEAL, width=2)
         cx, cy = w // 2, h // 2 - int(h * 0.2)
         c.create_rectangle(cx - 4, cy - 9, cx + 4, cy + 4, fill=DROP_FG, width=0)
         c.create_polygon(cx - 10, cy + 4, cx + 10, cy + 4, cx, cy + 15, fill=DROP_FG, width=0)
