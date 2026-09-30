@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.6.1 — unreleased
+## 1.6.1 — 2026-10-01
 - Drop zone: dotted border on Linux like on Windows, and a little more room below the text.
 - Fix: in the IMDb column the EDIT and ✕ buttons covered the ID and cut off their own labels with larger fonts, as on many Linux desktops. Buttons and column now take their width from the actual font.
 - Cancel stops at once: a running sync is ended instead of finished first, nothing half done is left next to the video, and the history says that the user cancelled.
