@@ -2,6 +2,7 @@
 
 ## 1.6.1 — unreleased
 - Drop zone: dotted border on Linux like on Windows, and a little more room below the text.
+- Fix: in the IMDb column the EDIT and ✕ buttons covered the ID and cut off their own labels with larger fonts, as on many Linux desktops. Buttons and column now take their width from the actual font.
 - Cancel stops at once: a running sync is ended instead of finished first, nothing half done is left next to the video, and the history says that the user cancelled.
 - Fix: after a cancelled run the button turned back to "Start" but stayed disabled. It is enabled now and continues with what is left; what was already fetched counts as present.
 - While download and sync are running, dropped files and folders are ignored with a hint in the status line. During the search a new drop still replaces the running search.

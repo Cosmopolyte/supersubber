@@ -401,6 +401,7 @@ class App(_Root):
         self._worker_kind = ""                        # "scan" oder "work" — nur ein Vorlauf wird für einen neuen abgebrochen
         self._row_items: dict[str, core.Item] = {}
         self._sdh_rows: dict[str, str] = {}           # Video-Zeile → SDH-Zeile darunter
+        self._btn_w: tuple[int, int] | None = None    # gemessene Breite der Zell-Buttons, siehe _cell_btn_widths
         self._imdb_btns: dict[str, tuple] = {}
         self._table_langs = []
         self._setup_columns([c for c, v in self.lang_sel.items() if v.get()])
@@ -751,7 +752,26 @@ class App(_Root):
             self.table.heading(f"l_{l}", text=i18n.lang_name_ui(self.ui, l), anchor="w")
             self.table.column(f"l_{l}", width=max(115, lang_w), minwidth=70, stretch=False, anchor="w")
         self.table.heading("imdb", text=self.t("col_imdb"), anchor="w")
-        self.table.column("imdb", width=175, minwidth=120, stretch=False, anchor="w")
+        # Breite aus Schrift und echter Button-Größe: ID mit acht Ziffern, Abstand, EDIT, ✕.
+        # Feste Pixel reichten unter Linux mit größerer Schrift nicht — die Buttons deckten ID und Beschriftung zu
+        self._btn_w = self._cell_btn_widths()
+        wide, cross = self._btn_w
+        imdb_w = f9.measure("tt00000000") + 6 + 10 + wide + 2 + cross + 4
+        self.table.column("imdb", width=max(175, imdb_w), minwidth=120, stretch=False, anchor="w")
+
+    def _cell_btn_widths(self) -> tuple[int, int]:
+        """Pixelbreite der Zell-Buttons, gemessen an einem unsichtbaren Probe-Button: SET oder EDIT, dann ✕.
+        Schrift, DPI und Theme-Polster weichen je System stark ab — geschätzte Werte schneiden ab."""
+        # width=0: Breite aus dem Text — das Theme gibt Buttons sonst mindestens elf Zeichen
+        probe = ttk.Button(self.table, style="Cell.TButton", width=0)
+        wide = 0
+        for key in ("btn_edit", "btn_set"):
+            probe.configure(text=self.t(key))
+            wide = max(wide, probe.winfo_reqwidth())
+        probe.configure(text="✕")
+        cross = probe.winfo_reqwidth()
+        probe.destroy()
+        return wide, cross
 
     def _row_values(self, it: core.Item) -> tuple[list, str]:
         vals = [it.video.name, it.recognized or ("—" if it.wanted else "")]
@@ -837,8 +857,8 @@ class App(_Root):
         for iid, it in self._row_items.items():
             bbox = self.table.bbox(iid, "imdb") if it.wanted else None
             if iid not in self._imdb_btns:
-                b1 = ttk.Button(self.table, style="Cell.TButton", command=lambda it=it: self._imdb_popup(it))
-                b2 = ttk.Button(self.table, text="✕", style="Cell.TButton", width=2,
+                b1 = ttk.Button(self.table, style="Cell.TButton", width=0, command=lambda it=it: self._imdb_popup(it))
+                b2 = ttk.Button(self.table, text="✕", style="Cell.TButton", width=0,
                                 command=lambda it=it: self._clear_imdb(it))
                 self._tooltip(b1, lambda it=it: self.t("tt_imdb_edit" if it.imdb_id else "tt_imdb_set"))
                 self._tooltip(b2, self.t("tt_imdb_clear"))
@@ -847,16 +867,18 @@ class App(_Root):
             if not bbox:
                 b1.place_forget(); b2.place_forget(); continue
             x, y, w, h = bbox
+            wide, cross = self._btn_w or self._cell_btn_widths()
             state = ["disabled"] if busy else ["!disabled"]
             b1.state(state); b2.state(state)
             if it.imdb_id:
-                b1.configure(text=self.t("btn_edit"), width=5)
-                b2.place(x=x + w - 26, y=y + 1, height=h - 2)
-                b1.place(x=x + w - 26 - 48, y=y + 1, height=h - 2)
+                # rechtsbündig in gemessener Breite: ✕ ganz rechts, EDIT davor, links bleibt die ID lesbar
+                b1.configure(text=self.t("btn_edit"))
+                b2.place(x=x + w - cross - 4, y=y + 1, width=cross, height=h - 2)
+                b1.place(x=x + w - cross - 4 - 2 - wide, y=y + 1, width=wide, height=h - 2)
             else:
-                b1.configure(text=self.t("btn_set"), width=5)
+                b1.configure(text=self.t("btn_set"))
                 b2.place_forget()
-                b1.place(x=x + 3, y=y + 1, height=h - 2)
+                b1.place(x=x + 3, y=y + 1, width=wide, height=h - 2)
 
     def _clear_imdb(self, it: core.Item):
         if self.worker and self.worker.is_alive():
