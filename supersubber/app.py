@@ -457,8 +457,13 @@ class App(_Root):
         x0, x1 = (w - bw) // 2, (w + bw) // 2
         y0, y1 = 2, h - 2
         c.create_rectangle(x0, y0, x1, y1, fill=FIELD, width=0)
-        # Punktraster wie unter Windows — dort ersetzt Tk jedes Muster bei Breite 2 durch feine Punkte, X11 zeichnet es wörtlich
-        c.create_rectangle(x0 + 12, y0 + 10, x1 - 12, y1 - 10, dash=(2, 4), outline=TEAL, width=2)
+        if sys.platform == "win32":
+            # Windows-Tk ersetzt jedes Muster bei Breite 2 durch feine Punkte — genau das Bild, das gewollt ist
+            c.create_rectangle(x0 + 12, y0 + 10, x1 - 12, y1 - 10, dash=(2, 4), outline=TEAL, width=2)
+        else:
+            # X11 zeichnet Muster wörtlich und je nach Server mit überstehenden Kappen, die die Lücken schlucken:
+            # die Punkte deshalb selbst setzen, 2×2 Pixel im Abstand von 5
+            self._dotted_rect(c, x0 + 12, y0 + 10, x1 - 12, y1 - 10)
         # Text von unten her gesetzt, damit unter der zweiten Zeile immer gleich viel Luft zum Rahmen bleibt;
         # der Pfeil sitzt mittig im Raum darüber
         font = (UI_FONT, 11, "bold")
@@ -468,6 +473,15 @@ class App(_Root):
         c.create_polygon(cx - 10, cy + 4, cx + 10, cy + 4, cx, cy + 15, fill=DROP_FG, width=0)
         c.create_text(cx, y1 - 10 - 10, text=self.t("drop_main"), font=font, fill=DROP_FG, justify="center",
                       anchor="s")
+
+    @staticmethod
+    def _dotted_rect(c: tk.Canvas, x0: int, y0: int, x1: int, y1: int, dot: int = 2, pitch: int = 5):
+        for x in range(x0, x1 - dot + 1, pitch):
+            c.create_rectangle(x, y0, x + dot, y0 + dot, fill=TEAL, width=0)
+            c.create_rectangle(x, y1 - dot, x + dot, y1, fill=TEAL, width=0)
+        for y in range(y0, y1 - dot + 1, pitch):
+            c.create_rectangle(x0, y, x0 + dot, y + dot, fill=TEAL, width=0)
+            c.create_rectangle(x1 - dot, y, x1, y + dot, fill=TEAL, width=0)
 
     def _build_lang_menu(self):
         menu = tk.Menu(self.lang_btn, tearoff=0, bg=FIELD, fg=INK, activebackground=TEAL,
