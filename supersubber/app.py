@@ -355,7 +355,8 @@ class App(_Root):
         # Enter im Feld nimmt den Pfad beim Wort — eine frühere Dateiauswahl gilt dann nicht mehr
         fe.bind("<Return>", lambda e: (setattr(self, "_files", None), self._trigger_scan()))
 
-        drop_h = tkfont.Font(font=(UI_FONT, 11, "bold")).metrics("linespace") * 2 + 64   # Pfeil + zwei Zeilen
+        # Rahmen 12 oben und unten, Pfeil 24, zwei Textzeilen, dazwischen und darunter Luft
+        drop_h = tkfont.Font(font=(UI_FONT, 11, "bold")).metrics("linespace") * 2 + 72
         self.drop = tk.Canvas(card1, height=drop_h, bg=CARD, highlightthickness=0, cursor="hand2")
         self.drop.pack(fill="x", padx=10, pady=(6, 12))
         self.drop.bind("<Configure>", self._draw_drop)
@@ -458,11 +459,15 @@ class App(_Root):
         c.create_rectangle(x0, y0, x1, y1, fill=FIELD, width=0)
         # Punktraster wie unter Windows — dort ersetzt Tk jedes Muster bei Breite 2 durch feine Punkte, X11 zeichnet es wörtlich
         c.create_rectangle(x0 + 12, y0 + 10, x1 - 12, y1 - 10, dash=(2, 4), outline=TEAL, width=2)
-        cx, cy = w // 2, h // 2 - int(h * 0.2)
+        # Text von unten her gesetzt, damit unter der zweiten Zeile immer gleich viel Luft zum Rahmen bleibt;
+        # der Pfeil sitzt mittig im Raum darüber
+        font = (UI_FONT, 11, "bold")
+        text_top = y1 - 10 - 10 - tkfont.Font(font=font).metrics("linespace") * 2
+        cx, cy = w // 2, (y0 + 10 + text_top) // 2 - 3
         c.create_rectangle(cx - 4, cy - 9, cx + 4, cy + 4, fill=DROP_FG, width=0)
         c.create_polygon(cx - 10, cy + 4, cx + 10, cy + 4, cx, cy + 15, fill=DROP_FG, width=0)
-        c.create_text(cx, h // 2 + int(h * 0.17), text=self.t("drop_main"), font=(UI_FONT, 11, "bold"),
-                      fill=DROP_FG, justify="center")
+        c.create_text(cx, y1 - 10 - 10, text=self.t("drop_main"), font=font, fill=DROP_FG, justify="center",
+                      anchor="s")
 
     def _build_lang_menu(self):
         menu = tk.Menu(self.lang_btn, tearoff=0, bg=FIELD, fg=INK, activebackground=TEAL,
