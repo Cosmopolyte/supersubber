@@ -481,6 +481,10 @@ def _providers(cfg: dict, log: Log, tr: Tr):
         if not ok:
             log(tr("c_provider_down", name=p, host=PROVIDER_HOSTS[p][0]))
             providers.remove(p)
+    # auch nennen, was funktioniert — nur die Ausfälle zu zeigen sieht aus, als ginge gar nichts
+    if providers:
+        names = [PROVIDER_LABELS.get(p, p).split(" (")[0] for p in providers]   # ohne Zusatz in Klammern
+        log(tr("c_providers_on", names=", ".join(names)))
     _LOG.debug("providers: %s (disabled=%s)", providers, sorted(disabled))
     return providers, provider_configs
 
@@ -557,6 +561,7 @@ class Item:
     sdh_langs: list = field(default_factory=list)     # Sprachen, für die eine SDH-Fassung gesucht wird
     sdh_found: dict = field(default_factory=dict)     # lang → True/False
     sdh_status: dict = field(default_factory=dict)    # lang → present|embedded|found|synced|suspect|unsynced; fehlt = nichts zu melden
+    hit_films: dict = field(default_factory=dict)     # lang oder „lang SDH" → (Titel, Jahr) des besten Treffers
 
     @property
     def wanted(self) -> bool:
@@ -680,6 +685,40 @@ def _hits(it: "Item") -> str:
     return ", ".join(hits) if hits else "—"
 
 
+def _film_of(s) -> tuple[str, int] | None:
+    """Titel und Jahr des Films, zu dem ein Treffer gehört — nur die OpenSubtitles-Provider liefern das."""
+    title = getattr(s, "movie_title", None) or ""
+    if not title:
+        mn = str(getattr(s, "movie_name", "") or "")
+        title = "" if mn.startswith('"') else mn
+    year = getattr(s, "movie_year", None)
+    try:
+        year = int(year) if year else None
+    except (TypeError, ValueError):
+        year = None
+    return (title.strip(), year) if title.strip() and year else None
+
+
+def _apply_hit_year(it: "Item") -> None:
+    """Film ohne Jahr im Dateinamen: das Jahr des Films nennen, dessen Untertitel geholt würde. „Die Hard"
+    allein sagt nicht, welcher Film gemeint ist, Remakes tragen denselben Titel (Cosmo, 2026-10-01).
+    Ein Treffer-Film für alle Sprachen: dessen Titel und Jahr. Verschiedene Filme je Sprache: alle Jahre —
+    genau das soll man sehen, um es per IMDb-ID zu korrigieren. Mit IMDb-ID gilt deren Titel, wie bisher."""
+    from subliminal.video import Episode
+    v = it.v
+    if v is None or isinstance(v, Episode) or it.imdb_id or getattr(v, "year", None):
+        return
+    films = {f for f in it.hit_films.values() if f}
+    base = _recognized(v)
+    if len(films) == 1:
+        title, year = next(iter(films))
+        it.recognized = f"{title} · {year}"
+    elif films:
+        it.recognized = f"{base} · " + " / ".join(str(y) for y in sorted({y for _, y in films}))
+    else:
+        it.recognized = base
+
+
 def _title_from_candidates(cands: list, episode: bool) -> str:
     """Titel aus den Provider-Treffern (häufigster Wert) — die kennen den Film/die Serie zur IMDb-ID.
     opensubtitlescom: series_title/movie_title; opensubtitles: movie_name („\"MobLand\" Stick or Twist");
@@ -773,7 +812,7 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
     langs = [l for l in it.langs if only is None or l in only]
     sdh_langs = [l for l in it.sdh_langs if only is None or l in only]
     if only is None:
-        it.candidates, it.found, it.sdh_found = [], {}, {}
+        it.candidates, it.found, it.sdh_found, it.hit_films = [], {}, {}, {}
     it.error = None
     for lang in sdh_langs:
         it.sdh_status.pop(lang, None)
@@ -821,20 +860,25 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
                        s.id, score(s, v), sorted(s.get_matches(v)), bool(getattr(s, "hearing_impaired", False)),
                        _release_name(s))
         normal, sdh = _pick(it.candidates, it.split, False), _pick(it.candidates, it.split, True)
+        def top(pool_, L):
+            scored = [(score(s, v), s) for s in pool_ if s.language == L]
+            return max(scored, key=lambda t: t[0], default=(0, None))
+
         for lang in langs:
-            L = Language.fromietf(lang)
-            best = max((score(s, v) for s in normal if s.language == L), default=0)
+            best, s_best = top(normal, Language.fromietf(lang))
             it.found[lang] = best >= it.min_score
             it.status[lang] = "found" if it.found[lang] else "none"
-            _LOG.debug("%s: %s best=%d -> %s", it.video.name, lang, best, it.status[lang])
+            it.hit_films[lang] = _film_of(s_best) if it.found[lang] else None
+            _LOG.debug("%s: %s best=%d -> %s film=%s", it.video.name, lang, best, it.status[lang], it.hit_films[lang])
         for lang in sdh_langs:
             # eine fehlende SDH-Fassung ist kein Fehler: kein Status, keine Zeile
-            L = Language.fromietf(lang)
-            best = max((score(s, v) for s in sdh if s.language == L), default=0)
+            best, s_best = top(sdh, Language.fromietf(lang))
             it.sdh_found[lang] = best >= it.min_score
             if it.sdh_found[lang]:
                 it.sdh_status[lang] = "found"
+            it.hit_films[f"{lang} SDH"] = _film_of(s_best) if it.sdh_found[lang] else None
             _LOG.debug("%s: %s SDH best=%d -> %s", it.video.name, lang, best, it.sdh_found[lang])
+        _apply_hit_year(it)
     except Exception as e:  # noqa: BLE001
         _LOG.exception("%s: search failed", it.video.name)
         it.error = f"{type(e).__name__}: {e}"
@@ -911,9 +955,13 @@ def update_languages(sc: Scan, languages: list[str], cfg: dict, progress: Progre
             for l in removed:
                 for d in (it.found, it.status, it.existing, it.sdh_found, it.sdh_status):
                     d.pop(l, None)
+                it.hit_films.pop(l, None)
+                it.hit_films.pop(f"{l} SDH", None)
                 for lst in (it.langs, it.sdh_langs):
                     if l in lst:
                         lst.remove(l)
+            if removed:
+                _apply_hit_year(it)
         sc.languages = [l for l in sc.languages if l not in removed]
         if added:
             _region_setup()

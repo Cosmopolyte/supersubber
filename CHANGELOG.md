@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.2 — unreleased
+- "Recognized as" names the year for films whose file name has none, taken from the subtitle that would be downloaded: `Die Hard.mp4` shows `Die Hard · 1988`. If the hits for different languages belong to different films, all years are shown, for example `Batman · 1989 / 2010` — a sign to set the IMDb ID.
+- The history names the sources in use, not only the ones that are unreachable.
+
 ## 1.6.1 — 2026-10-01
 - Drop zone: dotted border on Linux like on Windows, and a little more room below the text.
 - Fix: in the IMDb column the EDIT and ✕ buttons covered the ID and cut off their own labels with larger fonts, as on many Linux desktops. Buttons and column now take their width from the actual font.
