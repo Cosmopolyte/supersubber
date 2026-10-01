@@ -474,17 +474,22 @@ def _providers(cfg: dict, log: Log, tr: Tr):
     else:
         log(tr("c_no_login"))
     disabled = set(cfg.get("providers_disabled") or [])
+    off = [p for p in providers if p in disabled]
     providers = [p for p in providers if p not in disabled]
     status = provider_status()
+    down = []
     for p in list(providers):
         ok, detail = status.get(p, (True, ""))
         if not ok:
-            log(tr("c_provider_down", name=p, host=PROVIDER_HOSTS[p][0]))
+            _LOG.info("provider %s unreachable (%s): %s", p, PROVIDER_HOSTS[p][0], detail)
+            down.append(p)
             providers.remove(p)
-    # auch nennen, was funktioniert — nur die Ausfälle zu zeigen sieht aus, als ginge gar nichts
-    if providers:
-        names = [PROVIDER_LABELS.get(p, p).split(" (")[0] for p in providers]   # ohne Zusatz in Klammern
-        log(tr("c_providers_on", names=", ".join(names)))
+    # gleich gebaute Zeilen für alle Fälle; auch nennen, was funktioniert — nur die Ausfälle zu zeigen
+    # sieht aus, als ginge gar nichts (Cosmo, 2026-10-01). Der Host steht in der Logdatei
+    label = lambda p: PROVIDER_LABELS.get(p, p).split(" (")[0]   # noqa: E731 — ohne Zusatz in Klammern
+    for key, group in (("c_providers_on", providers), ("c_providers_down", down), ("c_providers_off", off)):
+        if group:
+            log(tr(key, names=", ".join(label(p) for p in group)))
     _LOG.debug("providers: %s (disabled=%s)", providers, sorted(disabled))
     return providers, provider_configs
 
