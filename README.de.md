@@ -21,7 +21,7 @@ Zwei Extras lassen sich in den Einstellungen einschalten, beide sind standardmä
 
 Die Oberfläche ist auf Deutsch, Russisch und Englisch umschaltbar. Das Sprachen-Dropdown startet mit den zehn häufigsten Sprachen — der Button „Sprachen…" öffnet eine durchsuchbare Liste mit ~40 weiteren, angezeigt in ihrer Eigenschreibweise.
 
-**Eigenes Untertitel-File syncen:** Ein `.srt` oder `.ass` in die Drop-Zone ziehen, allein oder zusammen mit dem Video. Das Video mit demselben Namen wird automatisch genommen, `Film.de.srt` gehört zu `Film.mkv`. Ohne solchen Treffer zählt das einzige Video im Ordner, sonst fragt ein Dateidialog. Ein verdrängtes File bleibt erhalten und bekommt die Endung `.orig`, die Player ignorieren.
+**Eigenes Untertitel-File syncen:** Ein `.srt` oder `.ass` in die Drop-Zone ziehen, allein oder zusammen mit dem Video. Das Video mit demselben Namen wird automatisch genommen, `Film.de.srt` gehört zu `Film.mkv`. Ohne solchen Treffer zählt das einzige Video im Ordner, sonst fragt ein Dateidialog. Mehrere Untertitel lassen sich auf einmal hineinziehen, jeder wird gegen das Video mit seinem Namen gesynct. Ein verdrängtes File bleibt erhalten und bekommt die Endung `.orig`, die Player ignorieren.
 
 **NFO-Dateien:** Liegt neben dem Video eine `.nfo` mit IMDb-Link, sucht SuperSubber sofort über diese ID — Originaltitel, Jahr oder Schreibweise im Dateinamen spielen dann keine Rolle mehr.
 

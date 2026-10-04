@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.6.4 — unreleased
+- Several subtitles can be dropped at once, for example those of a whole season. Each one is synced against the video with its name, one after the other, with one result block at the end. A subtitle without a matching video is skipped and listed. Until now only the first dropped subtitle was used.
+
 ## 1.6.3 — 2026-10-04
 - Results are easier to spot: the result lines in the history and the status line carry round symbols — green check, yellow exclamation mark, red cross. Lines in the history take the colour of their mark. "Copy history" still copies plain text.
 - A dropped subtitle that is already in sync is left as it is: no backup, no new file, and the history says so. Until now every drop wrote the file again and added another `.orig` next to it.

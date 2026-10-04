@@ -115,6 +115,8 @@ class Result:
     unsynced: list[str] = field(default_factory=list)   # geladen, alass gescheitert → roh übernommen
     suspect: list[str] = field(default_factory=list)    # gesynct, aber Untertitel passt vermutlich nicht
     insync: list[str] = field(default_factory=list)     # hineingezogen und schon synchron → nichts angefasst
+    failed: list[str] = field(default_factory=list)     # hineingezogen, Sync mit Fehler abgebrochen: „Name — Fehler"
+    novideo: list[str] = field(default_factory=list)    # hineingezogen, aber kein Video mit diesem Namen
     suspect_items: list[tuple[str, str]] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
     missing_items: list[tuple[str, str]] = field(default_factory=list)   # (Videopfad, Sprachkürzel)
@@ -157,7 +159,7 @@ def find_videos(folder: str, min_size_mb: int, exts: frozenset = VIDEO_EXT) -> l
     return sorted(out)
 
 
-def video_for_sub(sub: Path, exts: frozenset = VIDEO_EXT) -> Path | None:
+def video_for_sub(sub: Path, exts: frozenset = VIDEO_EXT, extra: tuple = ()) -> Path | None:
     """Das Video im selben Ordner, zu dem ein Untertitel dem Namen nach gehört: `Film.en.srt`, `Film.srt`,
     `Film.en.sdh.unsynced.srt` → `Film.mkv`. Bei mehreren passenden Stämmen gewinnt der längste —
     `Show.S01E01.Part.2.en.srt` gehört zu `Show.S01E01.Part.2.mkv`, nicht zu `Show.S01E01.mkv`.
@@ -166,7 +168,9 @@ def video_for_sub(sub: Path, exts: frozenset = VIDEO_EXT) -> Path | None:
     name = sub.name.lower()
     best: list[Path] = []
     try:
-        for p in sub.parent.iterdir():
+        # extra: mit hineingezogene Videos, die auch in einem anderen Ordner liegen dürfen
+        pool = {Path(os.path.normcase(str(p))): p for p in list(sub.parent.iterdir()) + [Path(x) for x in extra]}
+        for p in pool.values():
             if p.suffix.lower() not in exts or not p.is_file():
                 continue
             stem = p.stem.lower()
@@ -1278,10 +1282,34 @@ def run(folder: str, languages: list[str], cfg: dict, progress: Progress, log: L
     return run_scan(sc, cfg, progress, log, cancel, tr, frac)
 
 
+def run_local_many(pairs: list, cfg: dict, progress: Progress, log: Log, cancel: threading.Event,
+                   tr: Tr = _tr_fallback, frac: Frac | None = None) -> Result:
+    """Mehrere hineingezogene Untertitel nacheinander syncen. pairs: (Video, Untertitel, Sprache).
+    Ein Fehler bei einem Paar hält die übrigen nicht auf; ein Abbruch beendet den Rest."""
+    total, res = len(pairs), Result()
+    for i, (video, sub, lang) in enumerate(pairs, 1):
+        if cancel.is_set():
+            res.cancelled = True
+            break
+        one = run_local(video, sub, lang, cfg, progress, log, cancel, tr,
+                        frac=(lambda f, i=i: frac((i - 1 + f) / total)) if frac else None, pos=(i, total))
+        for name in ("synced", "unsynced", "suspect", "suspect_items", "insync", "noaccess", "failed"):
+            getattr(res, name).extend(getattr(one, name))
+        if one.error:
+            log(tr("c_dl_err", err=one.error))
+            res.failed.append(f"{Path(sub).name}  —  {one.error}")
+        if one.cancelled:
+            res.cancelled = True
+            break
+    return res
+
+
 def run_local(video_path: str, sub_path: str, lang: str, cfg: dict, progress: Progress, log: Log,
-              cancel: threading.Event, tr: Tr = _tr_fallback, frac: Frac | None = None) -> Result:
+              cancel: threading.Event, tr: Tr = _tr_fallback, frac: Frac | None = None,
+              pos: tuple = (1, 1)) -> Result:
     """Vorhandenes Untertitel-File gegen ein Video syncen (kein Download).
-    Ziel ist immer <Video>.<lang>.<ext>; ein dort liegendes File wird einmalig als *.orig gesichert."""
+    Ziel ist immer <Video>.<lang>.<ext>; ein dort liegendes File wird einmalig als *.orig gesichert.
+    pos: Platz in einer Reihe mehrerer Dateien, nur für die Anzeige."""
     res = Result()
     try:
         video, sub = Path(video_path), Path(sub_path)
@@ -1308,8 +1336,8 @@ def run_local(video_path: str, sub_path: str, lang: str, cfg: dict, progress: Pr
             src = tmpdir / sub.name
             shutil.copyfile(source, src)
             recoded = _ensure_utf8(src)
-            progress(video.name, 1, 1)
-            log(f"[1/1] {video.name}  [{lang}]  ←  {sub.name}")
+            progress(video.name, *pos)
+            log(f"[{pos[0]}/{pos[1]}] {video.name}  [{lang}]  ←  {sub.name}")
             log(tr("c_syncing"))
             sp = (lambda f: frac(min(1.0, 0.03 + 0.97 * f))) if frac else None
             info: dict = {}

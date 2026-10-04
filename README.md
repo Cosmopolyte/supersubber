@@ -23,7 +23,7 @@ Two extras can be switched on in the settings, both off by default. **Also keep 
 
 The UI speaks English, German and Russian. The subtitle-language dropdown starts with the ten most common languages — the **Languages…** button opens a searchable list of ~40 more, shown in their native names.
 
-**Sync your own subtitle file:** drag a `.srt` or `.ass` into the drop zone, alone or together with the video. The video with the same name is picked automatically, `movie.en.srt` goes with `movie.mkv`. Without such a match the only video in the folder is taken, otherwise a file dialog asks. A displaced file is kept and renamed with the extension `.orig`, which media players ignore.
+**Sync your own subtitle file:** drag a `.srt` or `.ass` into the drop zone, alone or together with the video. The video with the same name is picked automatically, `movie.en.srt` goes with `movie.mkv`. Without such a match the only video in the folder is taken, otherwise a file dialog asks. Several subtitles can be dropped at once, each is synced against the video with its name. A displaced file is kept and renamed with the extension `.orig`, which media players ignore.
 
 **NFO files:** if a `.nfo` next to the video contains an IMDb link, SuperSubber searches by that ID right away — original title, year or wording in the filename no longer matter.
 

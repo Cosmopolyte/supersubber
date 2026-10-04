@@ -1055,6 +1055,10 @@ class App(_Root):
         paths = list(self.tk.splitlist(event.data))
         subs = [p for p in paths if os.path.splitext(p)[1].lower() in core.SUB_EXT]
         vids = [p for p in paths if os.path.splitext(p)[1].lower() in core.video_exts(self.cfg)]
+        if len(subs) > 1:
+            # mehrere Untertitel: jeder gegen das Video mit seinem Namen, ohne Dialog
+            self._local_sync_many(subs, vids)
+            return
         if subs:
             # Untertitel-File → lokalen Sync starten (Video ggf. automatisch/per Dialog)
             self._local_sync(subs[0], vids[0] if vids else None)
@@ -1097,12 +1101,7 @@ class App(_Root):
                 if not video:
                     return
                 video = os.path.normpath(video)
-        # auch der aufbewahrte rohe Download trägt seine Sprache: Film.en.unsynced.srt, Film.en.sdh.unsynced.srt
-        m = re.search(r"\.([a-z]{2}(?:-[a-z]{2})?)(?:\.sdh)?(?:\.unsynced)?\.(?:srt|ass|ssa)$",
-                      os.path.basename(sub), re.IGNORECASE)
-        # Regionalcodes normalisieren: pt-br → pt-BR
-        lang = (m.group(1)[:2].lower() + m.group(1)[2:].upper()) if m \
-            else next((c for c, v in self.lang_sel.items() if v.get()), None)
+        lang = self._sub_lang(sub)
         if not lang:
             self._dialog(self, self.t("warn_lang")); return
         self.folder_var.set(os.path.dirname(video))
@@ -1116,6 +1115,50 @@ class App(_Root):
                                  log=lambda s: self.q.put(("log", s)), cancel=self.cancel,
                                  tr=lambda key, **kw: i18n.tr(ui, key, **kw),
                                  frac=lambda v: self.q.put(("frac", v)))
+            self.q.put(("done", res))
+
+        self._worker_kind = "work"
+        self.worker = threading.Thread(target=work, daemon=True)
+        self._busy(True)
+        self.worker.start()
+
+    def _sub_lang(self, sub: str) -> str | None:
+        """Sprache eines hineingezogenen Untertitels: aus dem Dateinamen, sonst die erste angehakte."""
+        # auch der aufbewahrte rohe Download trägt seine Sprache: Film.en.unsynced.srt, Film.en.sdh.unsynced.srt
+        m = re.search(r"\.([a-z]{2}(?:-[a-z]{2})?)(?:\.sdh)?(?:\.unsynced)?\.(?:srt|ass|ssa)$",
+                      os.path.basename(sub), re.IGNORECASE)
+        # Regionalcodes normalisieren: pt-br → pt-BR
+        return (m.group(1)[:2].lower() + m.group(1)[2:].upper()) if m \
+            else next((c for c, v in self.lang_sel.items() if v.get()), None)
+
+    def _local_sync_many(self, subs: list, vids: list):
+        """Mehrere Untertitel auf einmal. Zugeordnet wird nur über den Namen — ein Dialog je Datei wäre bei
+        einer Staffel unbrauchbar; was kein Video findet, wird übersprungen und im Ergebnis genannt."""
+        if self.worker and self.worker.is_alive():
+            return
+        exts = core.video_exts(self.cfg)
+        pairs, novideo = [], []
+        for sub in sorted(os.path.normpath(s) for s in subs):
+            video, lang = core.video_for_sub(Path(sub), exts, extra=tuple(vids)), self._sub_lang(sub)
+            if not lang:
+                self._dialog(self, self.t("warn_lang")); return
+            if video:
+                pairs.append((str(video), sub, lang))
+            else:
+                novideo.append(os.path.basename(sub))
+        self.folder_var.set(os.path.dirname(pairs[0][0] if pairs else os.path.normpath(subs[0])))
+        self._files = None
+        self.cancel.clear()
+        self._log_sep(self.t("many_subs", n=len(subs)))
+        ui = self.ui
+
+        def work():
+            res = core.run_local_many(pairs, self.cfg,
+                                      progress=lambda m2, i, n: self.q.put(("progress", m2, i, n)),
+                                      log=lambda s: self.q.put(("log", s)), cancel=self.cancel,
+                                      tr=lambda key, **kw: i18n.tr(ui, key, **kw),
+                                      frac=lambda v: self.q.put(("frac", v)))
+            res.novideo = novideo
             self.q.put(("done", res))
 
         self._worker_kind = "work"
@@ -1215,19 +1258,23 @@ class App(_Root):
             self._refresh_rows(self.scan.items)
             # erledigt — neuer Lauf erst nach neuem Vorlauf; nach einem Abbruch geht es mit dem Rest weiter
             self.start_btn.state(["!disabled"] if rest else ["disabled"])
-        if res.insync and not any((res.synced, res.unsynced, res.suspect, res.missing, res.noaccess, res.cancelled)):
+        bad = (res.unsynced, res.suspect, res.missing, res.noaccess, res.failed, res.novideo, res.cancelled)
+        if len(res.insync) == 1 and not res.synced and not any(bad):
             self.status.config(text=self.t("res_in_sync"))
             return
-        if not any((res.synced, res.unsynced, res.suspect, res.missing, res.noaccess, res.cancelled)):
+        if not res.synced and not res.insync and not any(bad):
             self.status.config(text=self.t("res_all_have", n=res.skipped))
             return
         parts = [self.t("p_synced", n=len(res.synced))]
+        if res.insync: parts.append(self.t("p_insync", n=len(res.insync)))
         if res.skipped: parts.append(self.t("p_existing", n=res.skipped))
         if res.suspect: parts.append(self.t("p_suspect", n=len(res.suspect)))
         if res.unsynced: parts.append(self.t("p_unsynced", n=len(res.unsynced)))
         if res.missing: parts.append(self.t("p_missing", n=len(res.missing)))
         if res.noaccess: parts.append(self.t("p_noaccess", n=len(res.noaccess)))
-        ok = not res.missing and not res.unsynced and not res.suspect and not res.noaccess and not res.cancelled
+        if res.novideo: parts.append(self.t("p_novideo", n=len(res.novideo)))
+        if res.failed: parts.append(self.t("p_failed", n=len(res.failed)))
+        ok = not any(bad)
         head = self.t("res_cancelled") if res.cancelled else self.t("res_done")
         self.status.config(text=("✔  " if ok else "⚠  ") + head + ", ".join(parts))
         self._log_summary(res)
@@ -1237,6 +1284,12 @@ class App(_Root):
         self._log_raw("\n" + self.t("sum_head"), ("head",))
         for m in res.synced:
             self._log_raw(f"  ✔ {m}  —  {self.t('s_synced')}", ("ok",))
+        for m in res.insync:
+            self._log_raw(f"  ✔ {m}  —  {self.t('s_insync')}", ("ok",))
+        for m in res.novideo:
+            self._log_raw(f"  ⚠ {m}  —  {self.t('s_novideo')}", ("warn",))
+        for m in res.failed:
+            self._log_raw(f"  ✖ {m}", ("fail",))
         for m in res.suspect:
             self._log_raw(f"  ⚠ {m}  —  {self.t('s_suspect')}", ("warn",))
         for m in res.unsynced:
