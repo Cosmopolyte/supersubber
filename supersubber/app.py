@@ -765,8 +765,8 @@ class App(_Root):
         return bool(self.worker and self.worker.is_alive())
 
     # ---- Tabelle -------------------------------------------------------------
-    # ↓ = beim Provider gefunden, noch nicht geladen; der Haken erst, wenn der Untertitel wirklich da ist
-    _SYM = {"present": "✔", "embedded": "✔", "found": "↓", "synced": "✔", "suspect": "⚠", "unsynced": "⚠",
+    # „found" behält den Haken: der Pfeil ↓ war in der Tabellenschrift zu fein und las sich wie ein l (Cosmo, 2026-10-04)
+    _SYM = {"present": "✔", "embedded": "✔", "found": "✔", "synced": "✔", "suspect": "⚠", "unsynced": "⚠",
             "none": "✖", "missing": "✖", "pending": "…"}
 
     def _setup_columns(self, langs: list[str]):
