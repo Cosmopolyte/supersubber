@@ -156,6 +156,30 @@ def find_videos(folder: str, min_size_mb: int, exts: frozenset = VIDEO_EXT) -> l
     return sorted(out)
 
 
+def video_for_sub(sub: Path, exts: frozenset = VIDEO_EXT) -> Path | None:
+    """Das Video im selben Ordner, zu dem ein Untertitel dem Namen nach gehört: `Film.en.srt`, `Film.srt`,
+    `Film.en.sdh.unsynced.srt` → `Film.mkv`. Bei mehreren passenden Stämmen gewinnt der längste —
+    `Show.S01E01.Part.2.en.srt` gehört zu `Show.S01E01.Part.2.mkv`, nicht zu `Show.S01E01.mkv`.
+    None, wenn keines passt oder derselbe Stamm mit zwei Endungen vorliegt; dann entscheidet der Nutzer.
+    Ohne Mindestgröße: der Name ist eindeutig genug, auch für kurze Clips (Testkees, 2026-10-03)."""
+    name = sub.name.lower()
+    best: list[Path] = []
+    try:
+        for p in sub.parent.iterdir():
+            if p.suffix.lower() not in exts or not p.is_file():
+                continue
+            stem = p.stem.lower()
+            if not name.startswith(stem + "."):
+                continue
+            if not best or len(stem) > len(best[0].stem):
+                best = [p]
+            elif len(stem) == len(best[0].stem):
+                best.append(p)
+    except OSError:
+        return None
+    return best[0] if len(best) == 1 else None
+
+
 def count_videos(folder: str, min_size_mb: int, limit: int = 2, exts: frozenset = VIDEO_EXT) -> int:
     """Zählt Videos, bricht bei `limit` ab (fürs GUI: „genau eines?")."""
     n = 0

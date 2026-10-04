@@ -1046,6 +1046,11 @@ class App(_Root):
         if self.worker and self.worker.is_alive():
             return
         if not video:
+            # zuerst das Video mit demselben Namen, dann das einzige im Ordner, sonst fragen
+            named = core.video_for_sub(Path(sub), core.video_exts(self.cfg))
+            if named:
+                video = str(named)
+        if not video:
             folder = os.path.dirname(sub)
             vids = [v for v in core.find_videos(folder, int(self.cfg.get("min_size_mb", 50)), core.video_exts(self.cfg))
                     if str(v.parent) == folder]

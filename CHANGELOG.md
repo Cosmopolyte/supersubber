@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.6.3 — unreleased
+- A single dropped subtitle finds its video by name: `movie.en.srt` goes with `movie.mkv` in the same folder, without the file dialog. The dialog only appears when no video or more than one carries that name.
+
 ## 1.6.2 — 2026-10-01
 - "Recognized as" names the year for films whose file name has none, taken from the subtitle that would be downloaded: `Die Hard.mp4` shows `Die Hard · 1988`. If the hits for different languages belong to different films, all years are shown, for example `Batman · 1989 / 2010` — a sign to set the IMDb ID.
 - The history lists the sources in three uniform lines: in use, unreachable and, if any, switched off in the Providers dialog. Until now only the unreachable ones were named, which looked as if nothing worked.
