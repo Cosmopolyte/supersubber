@@ -114,6 +114,7 @@ class Result:
     synced: list[str] = field(default_factory=list)
     unsynced: list[str] = field(default_factory=list)   # geladen, alass gescheitert → roh übernommen
     suspect: list[str] = field(default_factory=list)    # gesynct, aber Untertitel passt vermutlich nicht
+    insync: list[str] = field(default_factory=list)     # hineingezogen und schon synchron → nichts angefasst
     suspect_items: list[tuple[str, str]] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
     missing_items: list[tuple[str, str]] = field(default_factory=list)   # (Videopfad, Sprachkürzel)
@@ -194,6 +195,7 @@ def count_videos(folder: str, min_size_mb: int, limit: int = 2, exts: frozenset 
 
 _SKIP_TOKENS = {"forced", "hi", "sdh", "cc", "default", "unsynced"}   # Zusätze in Sub-Dateinamen, keine Sprachen
 _SDH_TOKENS = {"sdh", "hi", "cc"}                         # Kennzeichen für Untertitel für Hörgeschädigte
+IN_SYNC_MAX_SHIFT = 0.1                                   # Sekunden; darunter gilt ein hineingezogener Untertitel als schon synchron
 UNSYNCED_TAG = "unsynced"                                 # <Video>.<lang>.unsynced.srt = roher Download, zählt nie als vorhanden
 SDH_TAG = "sdh"                                           # <Video>.<lang>.sdh.srt
 
@@ -366,8 +368,9 @@ def _kill_tree(proc: subprocess.Popen) -> None:
 
 def _alass(video: Path, sub: Path, out: Path, log: Log, tr: Tr = _tr_fallback,
            subprog: Callable[[float], None] | None = None,
-           cancel: threading.Event | None = None) -> tuple[bool, bool]:
+           cancel: threading.Event | None = None, info: dict | None = None) -> tuple[bool, bool]:
     """Sync ausführen; alass-Fortschritt (Audio-Analyse) wird live an subprog (0..1) gemeldet.
+    info bekommt, was alass getan hat: blocks, max_shift in Sekunden, ratio_one.
     Rückgabe: (erfolgreich, verdächtig) — verdächtig = mehrere Blöcke um Minuten verschoben.
     Wird cancel gesetzt, endet alass sofort; eine dabei entstandene Ausgabedatei wird entfernt."""
     env = dict(os.environ, ALASS_FFMPEG_PATH=_bin("ffmpeg"), ALASS_FFPROBE_PATH=_bin("ffprobe"))
@@ -420,12 +423,22 @@ def _alass(video: Path, sub: Path, out: Path, log: Log, tr: Tr = _tr_fallback,
     _LOG.debug("alass %s <- %s (exit %s): %s", video.name, sub.name, proc.returncode,
                " | ".join(l.strip() for l in lines if not re.match(r"\s*\d+ / \d+ \[", l)))
     big_shifts = 0
+    blocks, max_shift, ratio_one = 0, 0.0, False
     for line in lines:
         if re.search(r"shifted|ratio is|error", line):
             log("    " + line.strip())
-        m = re.search(r"by (-?)(\d+):(\d\d):(\d\d)\.", line)
+        r = re.search(r"ratio is ([\d.]+)", line)
+        if r:
+            ratio_one = float(r.group(1).rstrip(".") or 0) == 1.0
+        m = re.search(r"by (-?)(\d+):(\d\d):(\d\d)\.(\d+)", line)
+        if m:
+            blocks += 1
+            shift = int(m.group(2)) * 3600 + int(m.group(3)) * 60 + int(m.group(4)) + float("0." + m.group(5))
+            max_shift = max(max_shift, shift)
         if m and int(m.group(2)) * 3600 + int(m.group(3)) * 60 + int(m.group(4)) > 300:
             big_shifts += 1
+    if info is not None:
+        info.update(blocks=blocks, max_shift=max_shift, ratio_one=ratio_one)
     suspect = big_shifts >= 2
     if suspect:
         log(tr("c_sync_suspect"))
@@ -1280,14 +1293,10 @@ def run_local(video_path: str, sub_path: str, lang: str, cfg: dict, progress: Pr
         tmpdir: Path | None = None
         try:
             source = sub
-            if os.path.normcase(str(sub)) == os.path.normcase(str(target)):
-                orig = Path(str(target) + ".orig")
-                if orig.exists():
-                    import time
-                    orig = Path(str(target) + f".orig-{time.strftime('%Y%m%d-%H%M%S')}")
-                sub.rename(orig)
-                log(tr("c_backup", name=orig.name))
-                source = orig
+            # die Datei liegt schon unter dem Zielnamen: erst syncen, dann entscheiden — bis dahin bleibt sie unberührt
+            same = os.path.normcase(str(sub)) == os.path.normcase(str(target))
+            if same:
+                pass
             elif target.exists():
                 orig = Path(str(target) + ".orig")
                 if not orig.exists():
@@ -1298,15 +1307,36 @@ def run_local(video_path: str, sub_path: str, lang: str, cfg: dict, progress: Pr
             tmpdir = Path(tempfile.mkdtemp(prefix="supersubber-"))
             src = tmpdir / sub.name
             shutil.copyfile(source, src)
-            _ensure_utf8(src)
+            recoded = _ensure_utf8(src)
             progress(video.name, 1, 1)
             log(f"[1/1] {video.name}  [{lang}]  ←  {sub.name}")
             log(tr("c_syncing"))
             sp = (lambda f: frac(min(1.0, 0.03 + 0.97 * f))) if frac else None
-            ok, suspect = _alass(video, src, target, log, tr, subprog=sp, cancel=cancel)
+            info: dict = {}
+            out = tmpdir / f"synced{sub.suffix.lower()}" if same else target
+            ok, suspect = _alass(video, src, out, log, tr, subprog=sp, cancel=cancel, info=info)
             if cancel.is_set() and not ok:
                 res.cancelled = True
                 return res
+            if same:
+                # schon synchron: alass hat bei gleicher Bildrate keinen Block merklich verschoben. Dann bleibt
+                # die Datei, wie sie ist — keine Sicherung, keine neue Datei (Cosmo, 2026-10-04). Eine fremd
+                # kodierte Datei wird trotzdem ersetzt, das UTF-8 ist der Gewinn
+                if ok and not recoded and info.get("ratio_one") and info.get("blocks") \
+                        and info.get("max_shift", 1.0) < IN_SYNC_MAX_SHIFT:
+                    log(tr("c_in_sync"))
+                    res.insync.append(f"{video.name}  [{lang}]")
+                    if frac:
+                        frac(1.0)
+                    return res
+                orig = Path(str(target) + ".orig")
+                if orig.exists():
+                    import time
+                    orig = Path(str(target) + f".orig-{time.strftime('%Y%m%d-%H%M%S')}")
+                sub.rename(orig)
+                log(tr("c_backup", name=orig.name))
+                if ok:
+                    shutil.move(str(out), str(target))
             if ok and suspect:
                 res.suspect.append(f"{video.name}  [{lang}]")
                 res.suspect_items.append((str(video), lang))

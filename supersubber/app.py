@@ -1181,6 +1181,9 @@ class App(_Root):
             self._refresh_rows(self.scan.items)
             # erledigt — neuer Lauf erst nach neuem Vorlauf; nach einem Abbruch geht es mit dem Rest weiter
             self.start_btn.state(["!disabled"] if rest else ["disabled"])
+        if res.insync and not any((res.synced, res.unsynced, res.suspect, res.missing, res.noaccess, res.cancelled)):
+            self.status.config(text=self.t("res_in_sync"))
+            return
         if not any((res.synced, res.unsynced, res.suspect, res.missing, res.noaccess, res.cancelled)):
             self.status.config(text=self.t("res_all_have", n=res.skipped))
             return

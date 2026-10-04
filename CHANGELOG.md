@@ -1,6 +1,8 @@
 # Changelog
 
 ## 1.6.3 — unreleased
+- A dropped subtitle that is already in sync is left as it is: no backup, no new file, and the history says so. Until now every drop wrote the file again and added another `.orig` next to it.
+- Fix: cancelling the sync of a dropped subtitle that already carried the target name left it renamed to `.orig`. The file is now untouched until the sync has finished.
 - A single dropped subtitle finds its video by name: `movie.en.srt` goes with `movie.mkv` in the same folder, without the file dialog. The dialog only appears when no video or more than one carries that name.
 
 ## 1.6.2 — 2026-10-01
