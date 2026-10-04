@@ -1574,8 +1574,11 @@ class App(_Root):
             tags = ("sub",)
         elif s.startswith("[") or s.startswith(("Suche per IMDb", "Searching via IMDb", "Поиск по IMDb")):
             tags = ("head",)
-        if "⚠" in s:
-            tags = tags + ("warn",)
+        # das Zeichen in der Zeile bestimmt die Farbe: Erfolg grün, Warnung gelb, Fehler rot
+        for mark, tag in (("✔", "ok"), ("⚠", "warn"), ("✖", "fail")):
+            if mark in s:
+                tags = tags + (tag,)
+                break
         self.log.config(state="normal"); self.log.insert("end", txt + "\n", tags); self.log.see("end"); self.log.config(state="disabled")
 
     def _log_clear(self):
