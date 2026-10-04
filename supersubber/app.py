@@ -14,7 +14,7 @@ from pathlib import Path
 from tkinter import filedialog, ttk
 from tkinter import font as tkfont
 
-from . import __version__, config, core, i18n, logfile
+from . import __version__, config, core, i18n, icons, logfile
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -203,6 +203,32 @@ class CanvasBar(tk.Canvas):
                                  font=(UI_FONT, 9, "bold"))
         elif self._idle_text:
             self.create_text(w // 2, h // 2, text=self._idle_text, fill=IDLE_TEXT, font=(UI_FONT, 9))
+
+
+class StatusLabel(ttk.Label):
+    """Statuszeile: ein führendes ✔ ⚠ ✖ erscheint als rundes Symbol. cget("text") liefert weiter den vollen Text,
+    damit Aufrufer ihn sichern und zurücksetzen können."""
+
+    def __init__(self, master, icon_set: dict, **kw):
+        super().__init__(master, compound="left", **kw)
+        self._icon_set = icon_set
+        self._full = kw.get("text", "")
+
+    def configure(self, cnf=None, **kw):
+        if "text" in kw:
+            self._full = kw["text"]
+            mark = self._full[:1]
+            if mark in icons.MARKS:
+                kw["text"] = " " + self._full[1:].lstrip()
+                kw["image"] = self._icon_set[icons.MARKS[mark]]
+            else:
+                kw["image"] = ""
+        return super().configure(cnf, **kw)
+
+    config = configure
+
+    def cget(self, key):
+        return self._full if key == "text" else super().cget(key)
 
 
 class App(_Root):
@@ -424,7 +450,14 @@ class App(_Root):
         srow = ttk.Frame(sec); srow.pack(fill="x", padx=10)
         self.spinner = tk.Label(srow, text="", font=(UI_FONT, 12), fg=TITLE, width=2, bg=CARD)
         self.spinner.pack(side="left")
-        self.status = ttk.Label(srow, text="")
+        if not getattr(self, "_icons", None):
+            # einmal erzeugen, nicht bei jedem _build() — der gesicherte Verlauf verweist auf die Bildnamen
+            log_px = tkfont.Font(font=("Consolas", 9)).metrics("linespace")
+            self._icons = {k: icons.photo(k, log_px) for k in icons.MARKS.values()}
+            self._icons_status = {k: icons.photo(k, tkfont.Font(font=(UI_FONT, 9)).metrics("linespace") + 3)
+                                  for k in icons.MARKS.values()}
+            self._icon_marks = {str(self._icons[k]): m for m, k in icons.MARKS.items()}
+        self.status = StatusLabel(srow, self._icons_status, text="")
         self.status.pack(side="left", fill="x")
 
         self._logf = ttk.Frame(sec)
@@ -708,7 +741,7 @@ class App(_Root):
         if sc.error:
             self.bar.idle(self.t("error"))
             self._log_raw("✖  " + sc.error, ("fail",))
-            self.status.config(text=self.t("error")); return
+            self.status.config(text="✖  " + self.t("error")); return
         self._setup_columns(sc.languages)
         self._fill_table()
         n = len(sc.items)
@@ -732,7 +765,8 @@ class App(_Root):
         return bool(self.worker and self.worker.is_alive())
 
     # ---- Tabelle -------------------------------------------------------------
-    _SYM = {"present": "✔", "embedded": "✔", "found": "✔", "synced": "✔", "suspect": "⚠", "unsynced": "⚠",
+    # ↓ = beim Provider gefunden, noch nicht geladen; der Haken erst, wenn der Untertitel wirklich da ist
+    _SYM = {"present": "✔", "embedded": "✔", "found": "↓", "synced": "✔", "suspect": "⚠", "unsynced": "⚠",
             "none": "✖", "missing": "✖", "pending": "…"}
 
     def _setup_columns(self, langs: list[str]):
@@ -1170,7 +1204,7 @@ class App(_Root):
         if res.error:
             self.bar.idle(self.t("error"))
             self._log_raw("✖  " + res.error, ("fail",))
-            self.status.config(text=self.t("error")); return
+            self.status.config(text="✖  " + self.t("error")); return
         self.bar.set(1.0, "100 %")
         if self.scan:
             rest = False
@@ -1500,7 +1534,30 @@ class App(_Root):
     def _log_raw(self, s: str, tags: tuple[str, ...] = ()):
         if s.strip():
             logfile.log.info(s.strip())
-        self.log.config(state="normal"); self.log.insert("end", s + "\n", tags); self.log.see("end"); self.log.config(state="disabled")
+        self._log_insert(s, tags)
+
+    def _log_insert(self, s: str, tags: tuple[str, ...] = ()):
+        """Zeile in den Verlauf. Beginnt sie mit ✔ ⚠ ✖, steht dort das runde Symbol statt des Textzeichens —
+        nur Ergebnis-, Warn- und Fehlerzeilen fangen so an, laufende Zeilen bleiben schlicht."""
+        self.log.config(state="normal")
+        m = re.match(r"^(\s*)([✔⚠✖])[ \t]*(.*)$", s, re.S)
+        if m:
+            self.log.insert("end", m.group(1), tags)
+            at = self.log.index("end-1c")
+            self.log.image_create("end", image=self._icons[icons.MARKS[m.group(2)]], align="center", padx=1)
+            for t in tags:
+                self.log.tag_add(t, at)
+            self.log.insert("end", " " + m.group(3) + "\n", tags)
+        else:
+            self.log.insert("end", s + "\n", tags)
+        self.log.see("end"); self.log.config(state="disabled")
+
+    def _log_text(self) -> str:
+        """Verlauf als reiner Text; die Symbole werden wieder zu ihren Zeichen."""
+        out = []
+        for kind, value, _index in self.log.dump("1.0", "end-1c", text=True, image=True):
+            out.append(value if kind == "text" else self._icon_marks.get(value.split("#")[0], ""))
+        return "".join(out)
 
     def _log_sep(self, title: str = ""):
         """Trennlinie zwischen den Phasen — das Log wird nie automatisch geleert."""
@@ -1510,7 +1567,7 @@ class App(_Root):
     def save_log(self):
         """Verlauf (Fenster-Log) in die Zwischenablage — fürs Forum oder eine Mail. Die Logdatei bleibt davon unberührt."""
         self.clipboard_clear()
-        self.clipboard_append(self.log.get("1.0", "end-1c"))
+        self.clipboard_append(self._log_text())
         prev = self.status.cget("text")
         self.status.config(text=self.t("copied"))
         self.after(2500, lambda: self.status.config(text=prev) if self.status.cget("text") == self.t("copied") else None)
@@ -1518,7 +1575,7 @@ class App(_Root):
     def _log_dump(self) -> list:
         """Verlauf mit Formatierung sichern — _build() baut das Text-Widget neu."""
         try:
-            return self.log.dump("1.0", "end-1c", tag=True, text=True)
+            return self.log.dump("1.0", "end-1c", tag=True, text=True, image=True)
         except (tk.TclError, AttributeError):
             return []
 
@@ -1534,6 +1591,11 @@ class App(_Root):
                 active.remove(value)
             elif kind == "text":
                 self.log.insert("end", value, tuple(active))
+            elif kind == "image":
+                at = self.log.index("end-1c")
+                self.log.image_create("end", image=value.split("#")[0], align="center", padx=1)
+                for t in active:
+                    self.log.tag_add(t, at)
         self.log.see("end")
         self.log.config(state="disabled")
 
@@ -1579,7 +1641,7 @@ class App(_Root):
             if mark in s:
                 tags = tags + (tag,)
                 break
-        self.log.config(state="normal"); self.log.insert("end", txt + "\n", tags); self.log.see("end"); self.log.config(state="disabled")
+        self._log_insert(txt, tags)
 
     def _log_clear(self):
         self.log.config(state="normal"); self.log.delete("1.0", "end"); self.log.config(state="disabled")

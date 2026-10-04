@@ -1,6 +1,8 @@
 # Changelog
 
 ## 1.6.3 — unreleased
+- Results are easier to spot: the result lines in the history and the status line carry round symbols — green check, yellow exclamation mark, red cross. Lines in the history take the colour of their mark. "Copy history" still copies plain text.
+- Table: a subtitle that was found but not downloaded yet shows `↓ found`. The check mark now only stands for a subtitle that is really there, so the table looks different before and after the run.
 - A dropped subtitle that is already in sync is left as it is: no backup, no new file, and the history says so. Until now every drop wrote the file again and added another `.orig` next to it.
 - Fix: cancelling the sync of a dropped subtitle that already carried the target name left it renamed to `.orig`. The file is now untouched until the sync has finished.
 - A single dropped subtitle finds its video by name: `movie.en.srt` goes with `movie.mkv` in the same folder, without the file dialog. The dialog only appears when no video or more than one carries that name.
