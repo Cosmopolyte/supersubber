@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.6.4 — unreleased
+## 1.6.4 — 2026-10-04
 - Several subtitles can be dropped at once, for example those of a whole season. Each one is synced against the video with its name, one after the other, with one result block at the end. A subtitle without a matching video is skipped and listed. Until now only the first dropped subtitle was used.
 
 ## 1.6.3 — 2026-10-04
