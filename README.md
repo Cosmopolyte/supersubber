@@ -2,6 +2,7 @@
 
 SuperSubber ist an open source, no-nonsense, ad-free, tracker-free, and cloud-free subtitle downloader and syncer.
 
+
 + Open source, portable tool for Windows and Linux
 + Works on single video files or whole folders at once — a movie, a season or an entire show
 + Automatically downloads missing subtitles for every video
