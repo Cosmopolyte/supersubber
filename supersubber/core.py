@@ -42,16 +42,49 @@ _probe_cache: dict = {"time": 0.0, "status": {}}
 _probe_lock = threading.Lock()
 
 
+PROBE_TRIES = 2           # echte Anfragen je Prüfung: eine kann unterwegs verloren gehen, bei LTE erst recht
+
+
+def _probe_request(name: str, host: str, timeout: float) -> str:
+    """Eine echte Anfrage an Provider, deren Server Verbindungen annehmen, aber nicht antworten oder uns sperren.
+    BSplayer nahm am 2026-10-08 die Verbindung an und schwieg dann — 5 Versuche à 10 s je Video; TVsubtitles
+    antwortet mit 403. Liefert "" bei Erfolg, sonst den Grund."""
+    import requests
+    try:
+        if name == "bsplayer":
+            data = ('<?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope '
+                    'xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="http://{h}/v1.php">'
+                    '<SOAP-ENV:Body><ns1:logIn><username></username><password></password>'
+                    '<AppID>BSPlayer v2.67</AppID></ns1:logIn></SOAP-ENV:Body></SOAP-ENV:Envelope>').format(h=host)
+            r = requests.post(f"http://{host}/v1.php", data=data, timeout=timeout, headers={
+                "User-Agent": "BSPlayer/2.x (1022.12360)", "Content-Type": "text/xml; charset=utf-8",
+                "SOAPAction": '"http://api.bsplayer-subtitles.com/v1.php#logIn"'})
+            return "" if r.status_code == 200 and b"<status>OK</status>" in r.content else f"HTTP {r.status_code}"
+        if name == "tvsubtitles":
+            r = requests.post(f"https://{host}/search.php", data={"qs": "test"}, timeout=timeout,
+                              headers={"User-Agent": "Subliminal/2.7", "Referer": f"https://{host}/",
+                                       "X-Requested-With": "XMLHttpRequest"})
+            return "" if r.status_code == 200 else f"HTTP {r.status_code}"
+    except requests.RequestException as e:
+        return f"request: {type(e).__name__}"
+    return ""
+
+
 def probe_providers(timeout: float = 4.0) -> dict[str, tuple[bool, str]]:
-    """Erreichbarkeit aller bekannten Provider parallel prüfen: DNS + TCP-Verbindung. Ergebnis
-    name → (erreichbar, Detail) und im Cache abgelegt; ein toter Provider kostet sonst je Video die Timeouts."""
+    """Erreichbarkeit aller bekannten Provider parallel prüfen: DNS + TCP-Verbindung, bei BSplayer und
+    TVsubtitles zusätzlich eine echte Anfrage. Ergebnis name → (erreichbar, Detail) und im Cache abgelegt;
+    ein toter Provider kostet sonst je Video die Timeouts."""
     import socket
     import time as _time
     result: dict[str, tuple[bool, str]] = {}
 
     def check(name: str, host: str, port: int) -> None:
         last = "no address"
+        start = _time.time()                       # je Provider höchstens TCP plus die echten Anfragen
         for h in [host] + PROVIDER_ALT_HOSTS.get(name, []):
+            if _time.time() - start > timeout * PROBE_TRIES:
+                last = "timeout"
+                break
             try:
                 infos = socket.getaddrinfo(h, port, type=socket.SOCK_STREAM)
             except socket.gaierror as e:
@@ -60,19 +93,24 @@ def probe_providers(timeout: float = 4.0) -> dict[str, tuple[bool, str]]:
             for family, stype, proto, _, addr in infos[:2]:
                 try:
                     with socket.socket(family, stype, proto) as s:
-                        s.settimeout(timeout)
+                        s.settimeout(timeout / 2)      # Verbindung schnell, die Anfragen bekommen die Zeit
                         s.connect(addr)
-                    result[name] = (True, addr[0])
-                    return
                 except OSError as e:
                     last = f"connect: {e.strerror or e}"
+                    continue
+                for _try in range(PROBE_TRIES):
+                    last = _probe_request(name, h, timeout)
+                    if not last:
+                        result[name] = (True, addr[0])
+                        return
         result[name] = (False, last)
 
     threads = [threading.Thread(target=check, args=(n, h, p), daemon=True) for n, (h, p) in PROVIDER_HOSTS.items()]
     for t in threads:
         t.start()
+    deadline = _time.time() + timeout * (PROBE_TRIES + 1) + 2      # TCP plus die echten Anfragen
     for t in threads:
-        t.join(timeout + 1)
+        t.join(max(0.1, deadline - _time.time()))
     for n in PROVIDER_HOSTS:
         result.setdefault(n, (False, "timeout"))
     with _probe_lock:
@@ -506,7 +544,13 @@ def _patch_opensubtitlescom():
 
 def _providers(cfg: dict, log: Log, tr: Tr):
     providers = list(BASE_PROVIDERS)
-    provider_configs = {}
+    # fällt BSplayer mitten im Lauf aus, kostet das zwei Versuche à 5 s statt fünf à 10 s
+    provider_configs: dict = {"bsplayer": {"timeout": 5}}
+    try:
+        from subliminal.providers import bsplayer as _bsp
+        _bsp.BSPlayerProvider._api_request.__defaults__ = ("logIn", "", PROBE_TRIES)
+    except Exception:  # noqa: BLE001 — anderes subliminal: dann bleiben die Vorgaben der Bibliothek
+        pass
     from . import config as cfgmod
     user, pw = cfg.get("opensubtitles_user", ""), cfgmod.decrypt(cfg.get("opensubtitles_password", ""))
     if user and pw:
@@ -844,8 +888,44 @@ def _scan_video(path: Path):
     return v
 
 
+class _ProviderWatch(logging.Handler):
+    """Hört mit, welchen Provider subliminal gerade abfragt, und meldet ihn — damit die Statuszeile zeigt,
+    wer bremst, wenn eine Suche steht."""
+    _RE = re.compile(r"Listing subtitles with provider '([^']+)'")
+
+    def __init__(self, on_provider):
+        super().__init__(logging.INFO)
+        self.on_provider = on_provider
+
+    def emit(self, record):
+        m = self._RE.search(record.getMessage())
+        if m:
+            try:
+                self.on_provider(m.group(1))
+            except Exception:  # noqa: BLE001 — die Anzeige darf die Suche nie stören
+                pass
+
+    def __enter__(self):
+        lg = logging.getLogger("subliminal.core")
+        # ohne Logdatei stünde der Logger auf WARNING und die INFO-Zeilen kämen nie an
+        self._level = lg.level
+        if lg.getEffectiveLevel() > logging.INFO:
+            lg.setLevel(logging.INFO)
+        lg.addHandler(self)
+        return self
+
+    def __exit__(self, *exc):
+        lg = logging.getLogger("subliminal.core")
+        lg.removeHandler(self)
+        lg.setLevel(self._level)
+
+
+def provider_label(name: str) -> str:
+    return PROVIDER_LABELS.get(name, name).split(" (")[0]
+
+
 def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
-                 exts: frozenset = VIDEO_EXT, only: list | None = None) -> None:
+                 exts: frozenset = VIDEO_EXT, only: list | None = None, on_provider=None) -> None:
     """Erkennen + NFO + Provider-Suche + Bewertung für ein Item. Lädt nichts herunter.
     only: nur diese Sprachen suchen und bewerten, alles Übrige am Item bleibt stehen — für Sprachen, die
     nach dem Vorlauf dazugewählt werden. Die Erkennung läuft dann nur, wenn sie noch fehlt."""
@@ -889,7 +969,8 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
                 it.min_score = movie_scores["title"] + (movie_scores["year"] if getattr(v, "year", None) else 0)
         v = it.v
         want = {Language.fromietf(l) for l in langs + sdh_langs}
-        it.candidates = list(it.candidates) + (list(pool.list_subtitles(v, want)) if want else [])
+        with _ProviderWatch(on_provider or (lambda name: None)):
+            it.candidates = list(it.candidates) + (list(pool.list_subtitles(v, want)) if want else [])
         if fresh and it.imdb_id:
             # mit ID zählt, was die Provider zur ID sagen — nicht der aus dem Pfad geratene Titel
             se = _se(v) if isinstance(v, Episode) else ""
@@ -1026,7 +1107,8 @@ def update_languages(sc: Scan, languages: list[str], cfg: dict, progress: Progre
                             return sc
                         progress(it.video.name, i, len(todo))
                         _search_item(pool, it, log, tr, manual_id=it.imdb_id if it.imdb_source == "manual" else None,
-                                     exts=exts, only=added)
+                                     exts=exts, only=added,
+                                     on_provider=lambda p, it=it, i=i: progress(f"{it.video.name}  —  {provider_label(p)}", i, len(todo)))
                         log(tr("c_scan_item", name=it.video.name, rec=it.recognized or "?", hits=_hits(it)))
         sc.languages = list(languages)
         for it in sc.items:
@@ -1088,7 +1170,8 @@ def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: 
                     sc.cancelled = True
                     break
                 progress(it.video.name, i, len(todo))
-                _search_item(pool, it, log, tr, exts=exts)
+                _search_item(pool, it, log, tr, exts=exts,
+                             on_provider=lambda p, it=it, i=i: progress(f"{it.video.name}  —  {provider_label(p)}", i, len(todo)))
                 log(tr("c_scan_item", name=it.video.name, rec=it.recognized or "?", hits=_hits(it)))
     except Exception as e:  # noqa: BLE001
         sc.error = f"{type(e).__name__}: {e}"
