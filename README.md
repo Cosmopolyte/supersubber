@@ -1,6 +1,6 @@
 # SuperSubber — finds, downloads and syncs subtitles in bulk
 
-SuperSubber ist an open source, no-nonsense, ad-free, tracker-free, and cloud-free subtitle downloader and syncer.
+SuperSubber is an open source, no-nonsense, ad-free, tracker-free, and cloud-free subtitle downloader and syncer.
 
 
 + Open source, portable tool for Windows and Linux
