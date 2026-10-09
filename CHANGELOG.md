@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.6.5 — unreleased
+## 1.6.5 — 2026-10-09
 - Fix: a search could stand still for a minute per episode when BSplayer accepted the connection but did not answer. The reachability check now sends a real request to BSplayer and TVsubtitles, twice with a short timeout, and skips a source that stays silent or blocks us with 403. If BSplayer fails during a run anyway, it gets two tries of 5 seconds instead of five of 10.
 - The status line names the source that is being queried, so you can see who is slow when a search stands still.
 
