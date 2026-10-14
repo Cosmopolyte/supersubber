@@ -232,7 +232,11 @@ class StatusLabel(ttk.Label):
 
 
 class App(_Root):
-    def __init__(self, folder: str | None = None, langs: list[str] | None = None):
+    def __init__(self, folder: str | None = None, langs: list[str] | None = None,
+                 paths: list[str] | None = None):
+        """folder: Ordner oder Video von der Kommandozeile, wird sofort gesucht und gestartet.
+        paths: alle Kommandozeilen-Pfade; enthalten sie Untertitel, zählen sie wie hineingezogen —
+        so landet „Open with" aus dem Dateimanager beim Sync statt bei „No video files found"."""
         super().__init__()
         global UI_FONT
         UI_FONT = _desktop_font()
@@ -279,7 +283,10 @@ class App(_Root):
             w = min(int(sw * 0.62), 1180)
             h = min(max(int(sh * 0.82), self.winfo_reqheight() + 8), 1050, sh - 60)
             self.geometry(f"{w}x{h}+{(sw - w) // 2}+{max(0, (sh - h) // 2 - 20)}")
-        if folder:
+        if paths and any(os.path.splitext(p)[1].lower() in core.SUB_EXT for p in paths):
+            self._auto_run = False
+            self.after(200, lambda: self._drop_paths(paths))
+        elif folder:
             self.after(200, self._trigger_scan)
         elif self.cfg.get("check_updates_on_start", True):
             self.after(1500, lambda: self.check_updates(silent=True))
@@ -1052,7 +1059,11 @@ class App(_Root):
             # während Download und Sync gilt nichts Neues; während der Suche darf man sich umentscheiden
             self.status.config(text=self.t("busy_drop"))
             return
-        paths = list(self.tk.splitlist(event.data))
+        self._drop_paths(list(self.tk.splitlist(event.data)))
+
+    def _drop_paths(self, paths: list[str]):
+        """Hineingezogene oder per Kommandozeile übergebene Pfade: Untertitel → Sync, Videos → nur sie,
+        Ordner → alles darin."""
         subs = [p for p in paths if os.path.splitext(p)[1].lower() in core.SUB_EXT]
         vids = [p for p in paths if os.path.splitext(p)[1].lower() in core.video_exts(self.cfg)]
         if len(subs) > 1:
@@ -1701,7 +1712,8 @@ class App(_Root):
 
 
 def main():
-    """supersubber [Ordner] [--lang ru,de]  — mit Ordner wird sofort gestartet."""
+    """supersubber [Ordner|Video|Untertitel …] [--lang ru,de]  — Ordner oder Video wird sofort gestartet,
+    Untertitel werden gegen ihr Video gesynct."""
     args = sys.argv[1:]
     langs = None
     if "--lang" in args:
@@ -1709,5 +1721,6 @@ def main():
         langs = [x.strip()[:2].lower() + x.strip()[2:].upper() for x in args[i + 1].split(",") if x.strip()] \
             if i + 1 < len(args) else None
         del args[i:i + 2]
-    folder = args[0] if args else None
-    App(folder, langs).mainloop()
+    paths = [os.path.normpath(a) for a in args if a]
+    folder = paths[0] if paths else None
+    App(folder, langs, paths).mainloop()
