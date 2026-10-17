@@ -1071,10 +1071,22 @@ class App(_Root):
         if unsup and not subs:
             # bekanntes Untertitelformat, das der Sync nicht kann: erklären statt „No video files found"
             ext = os.path.splitext(unsup[0])[1].lower()
-            self._dialog(self, self.t("unsup_sub", name=os.path.basename(unsup[0]), ext=ext)
-                         + "\n\n" + self.t(core.UNSUPPORTED_SUB[ext]))
-            if not vids and not any(os.path.isdir(p) for p in paths):
-                return
+            text = self.t("unsup_sub", name=os.path.basename(unsup[0]), ext=ext) + "\n\n" \
+                + self.t(core.UNSUPPORTED_SUB[ext])
+            if vids or any(os.path.isdir(p) for p in paths):
+                self._dialog(self, text)
+            else:
+                # Angebot: gleich nach einem Text-Untertitel für dieses Video suchen (Cosmo, 2026-10-17)
+                if not self._dialog(self, text + "\n\n" + self.t("unsup_search"), yes_no=True):
+                    return
+                sub = Path(unsup[0])
+                video = core.video_for_sub(sub, core.video_exts(self.cfg))
+                if video:
+                    paths = [str(video)]
+                else:
+                    folder = sub.parent.parent if sub.parent.name.lower() in core.SUB_FOLDERS else sub.parent
+                    paths = [str(folder)]
+                vids = [p for p in paths if os.path.splitext(p)[1].lower() in core.video_exts(self.cfg)]
         if len(subs) > 1:
             # mehrere Untertitel: jeder gegen das Video mit seinem Namen, ohne Dialog
             self._local_sync_many(subs, vids)

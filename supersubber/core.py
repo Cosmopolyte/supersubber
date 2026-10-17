@@ -223,7 +223,8 @@ def video_for_sub(sub: Path, exts: frozenset = VIDEO_EXT, extra: tuple = ()) -> 
             if p.suffix.lower() not in exts or not p.is_file():
                 continue
             stem = p.stem.lower()
-            if not name.startswith(stem + "."):
+            # Trenner nach dem Stamm: Film.en.srt, aber auch Film-eng.idx oder Film_de.srt
+            if not (name.startswith(stem) and len(name) > len(stem) and name[len(stem)] in ".-_"):
                 continue
             if not best or len(stem) > len(best[0].stem):
                 best = [p]
