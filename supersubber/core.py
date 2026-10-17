@@ -17,6 +17,12 @@ from typing import Callable
 _LOG = logging.getLogger("supersubber.core")   # Details für die Logdatei, nicht fürs Fenster
 VIDEO_EXT = frozenset({".mkv", ".mp4", ".avi", ".m4v", ".mov", ".wmv"})
 SUB_EXT = (".srt", ".ass", ".ssa")
+# Bekannte Untertitel-Endungen, die der Sync nicht verarbeiten kann — bekommen eine erklärende Meldung
+# statt „No video files found". Wert: i18n-Schlüssel der Erklärung.
+UNSUPPORTED_SUB = {".idx": "unsup_vobsub", ".sub": "unsup_vobsub", ".sup": "unsup_pgs",
+                   ".vtt": "unsup_text", ".smi": "unsup_text", ".sami": "unsup_text", ".sbv": "unsup_text",
+                   ".ttml": "unsup_text", ".dfxp": "unsup_text"}
+SUB_FOLDERS = ("sub", "subs", "subtitles", "untertitel")   # übliche Unterordner, Video liegt eine Ebene höher
 # Provider ohne Zugangsdaten; opensubtitlescom kommt dazu, sobald ein Login konfiguriert ist
 # podnapisi seit März 2026 tot; napiprojekt (pl), subtitulamos (es/en, Serien) und subtis (es, Filme) kosten nichts —
 # subliminal fragt einen Provider nur, wenn er eine der gewählten Sprachen führt
@@ -202,12 +208,17 @@ def video_for_sub(sub: Path, exts: frozenset = VIDEO_EXT, extra: tuple = ()) -> 
     `Film.en.sdh.unsynced.srt` → `Film.mkv`. Bei mehreren passenden Stämmen gewinnt der längste —
     `Show.S01E01.Part.2.en.srt` gehört zu `Show.S01E01.Part.2.mkv`, nicht zu `Show.S01E01.mkv`.
     None, wenn keines passt oder derselbe Stamm mit zwei Endungen vorliegt; dann entscheidet der Nutzer.
-    Ohne Mindestgröße: der Name ist eindeutig genug, auch für kurze Clips (Testkees, 2026-10-03)."""
+    Ohne Mindestgröße: der Name ist eindeutig genug, auch für kurze Clips (Testkees, 2026-10-03).
+    Liegt der Untertitel in einem Ordner namens Subs o. ä., zählt auch der Ordner darüber — Release-Ordner
+    legen ihre Untertitel oft so ab. Andere Elternordner bleiben außen vor, der könnte die ganze Sammlung sein."""
     name = sub.name.lower()
     best: list[Path] = []
     try:
         # extra: mit hineingezogene Videos, die auch in einem anderen Ordner liegen dürfen
-        pool = {Path(os.path.normcase(str(p))): p for p in list(sub.parent.iterdir()) + [Path(x) for x in extra]}
+        around = list(sub.parent.iterdir())
+        if sub.parent.name.lower() in SUB_FOLDERS and sub.parent.parent != sub.parent:
+            around += list(sub.parent.parent.iterdir())
+        pool = {Path(os.path.normcase(str(p))): p for p in around + [Path(x) for x in extra]}
         for p in pool.values():
             if p.suffix.lower() not in exts or not p.is_file():
                 continue

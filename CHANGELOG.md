@@ -2,6 +2,8 @@
 
 ## 1.6.6 — unreleased
 - Fix: a subtitle file handed over from the file manager with "Open with" or on the command line was taken for a video and answered with "No video files found". It is now synced like a dropped subtitle: the video with the same name is picked, otherwise the only video in the folder, otherwise a file dialog asks. Several subtitles at once work the same way.
+- A subtitle in a `Subs` folder finds its video one level up, as release folders often arrange it.
+- Picture subtitles such as `.idx`/`.sub` and `.sup`, and text formats the sync cannot read, get an explanation instead of "No video files found".
 
 ## 1.6.5 — 2026-10-09
 - Fix: a search could stand still for a minute per episode when BSplayer accepted the connection but did not answer. The reachability check now sends a real request to BSplayer and TVsubtitles, twice with a short timeout, and skips a source that stays silent or blocks us with 403. If BSplayer fails during a run anyway, it gets two tries of 5 seconds instead of five of 10.

@@ -283,7 +283,8 @@ class App(_Root):
             w = min(int(sw * 0.62), 1180)
             h = min(max(int(sh * 0.82), self.winfo_reqheight() + 8), 1050, sh - 60)
             self.geometry(f"{w}x{h}+{(sw - w) // 2}+{max(0, (sh - h) // 2 - 20)}")
-        if paths and any(os.path.splitext(p)[1].lower() in core.SUB_EXT for p in paths):
+        if paths and any(os.path.splitext(p)[1].lower() in core.SUB_EXT or
+                         os.path.splitext(p)[1].lower() in core.UNSUPPORTED_SUB for p in paths):
             self._auto_run = False
             self.after(200, lambda: self._drop_paths(paths))
         elif folder:
@@ -1066,6 +1067,14 @@ class App(_Root):
         Ordner → alles darin."""
         subs = [p for p in paths if os.path.splitext(p)[1].lower() in core.SUB_EXT]
         vids = [p for p in paths if os.path.splitext(p)[1].lower() in core.video_exts(self.cfg)]
+        unsup = [p for p in paths if os.path.splitext(p)[1].lower() in core.UNSUPPORTED_SUB]
+        if unsup and not subs:
+            # bekanntes Untertitelformat, das der Sync nicht kann: erklären statt „No video files found"
+            ext = os.path.splitext(unsup[0])[1].lower()
+            self._dialog(self, self.t("unsup_sub", name=os.path.basename(unsup[0]), ext=ext)
+                         + "\n\n" + self.t(core.UNSUPPORTED_SUB[ext]))
+            if not vids and not any(os.path.isdir(p) for p in paths):
+                return
         if len(subs) > 1:
             # mehrere Untertitel: jeder gegen das Video mit seinem Namen, ohne Dialog
             self._local_sync_many(subs, vids)
