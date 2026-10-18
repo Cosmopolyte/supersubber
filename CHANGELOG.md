@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.6.7 — unreleased
+## 1.6.7 — 2026-10-18
 
 - Fix: a film whose name starts with a number, such as "3-10 To Yuma" or "Apollo 13", was searched as a TV episode and found nothing. A file is now treated as an episode only when the name carries an episode mark like S01E10, 1x10 or Episode 10. The subtitle sites make the same mistake with such titles, so a film title with a number is first looked up on IMDb and then searched by its IMDb ID.
 
