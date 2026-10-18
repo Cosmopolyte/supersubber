@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.7 — unreleased
+
+- Fix: a film whose name starts with a number, such as "3-10 To Yuma" or "Apollo 13", was searched as a TV episode and found nothing. A file is now treated as an episode only when the name carries an episode mark like S01E10, 1x10 or Episode 10. The subtitle sites make the same mistake with such titles, so a film title with a number is first looked up on IMDb and then searched by its IMDb ID.
+
 ## 1.6.6 — 2026-10-17
 - Fix: a subtitle file handed over from the file manager with "Open with" or on the command line was taken for a video and answered with "No video files found". It is now synced like a dropped subtitle: the video with the same name is picked, otherwise the only video in the folder, otherwise a file dialog asks. Several subtitles at once work the same way.
 - A subtitle in a `Subs` folder finds its video one level up, as release folders often arrange it.

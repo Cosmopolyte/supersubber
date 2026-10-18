@@ -594,6 +594,39 @@ def _providers(cfg: dict, log: Log, tr: Tr):
 _IMDB_RE = re.compile(r"tt\d{7,10}")
 
 
+def _imdb_lookup(title: str, year: int | None) -> tuple[str, str, int | None] | None:
+    """Film-Titel → IMDb-ID über die IMDb-Vorschlagssuche. Nötig für Titel mit Zahlen: OpenSubtitles .org und .com
+    zerlegen die Suchanfrage selbst wie einen Dateinamen und halten „Apollo 13“ für Folge 13 der Serie „Apollo“,
+    „3-10 To Yuma“ für Staffel 3 — Treffer: null (Testkees, Kodi-Forum #38). Mit ID suchen beide gezielt.
+    Genommen wird der erste Spielfilm, dessen Titel nach sanitize gleich ist; ein bekanntes Jahr muss bis auf
+    eins passen. Bei Remakes ohne Jahr im Namen gewinnt so der bekanntere, die ID lässt sich im Dialog ändern."""
+    import requests
+    from subliminal.utils import sanitize
+    from urllib.parse import quote
+    want = sanitize(title)
+    if not want:
+        return None
+    try:
+        r = requests.get(f"https://v3.sg.media-imdb.com/suggestion/x/{quote(title.lower())}.json",
+                         timeout=6, headers={"User-Agent": "SuperSubber"})
+        r.raise_for_status()
+        rows = r.json().get("d", [])
+    except Exception as e:  # noqa: BLE001
+        _LOG.debug("imdb lookup %r failed: %s", title, e)
+        return None
+    for row in rows:
+        rid = str(row.get("id", ""))
+        if not rid.startswith("tt") or row.get("qid") not in ("movie", "tvMovie", "video"):
+            continue
+        if sanitize(str(row.get("l", ""))) != want:
+            continue
+        y = row.get("y")
+        if year and y and abs(int(y) - int(year)) > 1:
+            continue
+        return rid, str(row.get("l")), int(y) if y else None
+    return None
+
+
 def _imdb_from_nfo(video: Path, episode: bool, exts: frozenset = VIDEO_EXT) -> str | None:
     """IMDb-ID aus NFO-Dateien neben dem Video (Release-NFOs enthalten fast immer den IMDb-Link,
     Kodi-NFOs die ID strukturiert). Filme: NFO mit gleichem Stamm bevorzugt, sonst jede NFO im Ordner.
@@ -649,7 +682,7 @@ class Item:
     v: object = None                                  # subliminal-Video (guessit + Hash)
     recognized: str = ""                              # „Whistle · 2025" / „Silo · S03E10"
     imdb_id: str | None = None
-    imdb_source: str = ""                             # "nfo" | "manual" | ""
+    imdb_source: str = ""                             # "nfo" | "lookup" | "manual" | ""
     candidates: list = field(default_factory=list)    # Provider-Kandidaten aller Sprachen
     min_score: int = 0
     group: str = ""                                   # Release-Gruppe des Rips
@@ -875,21 +908,45 @@ def _name_complete(name: str) -> bool:
         return False
 
 
+# Ausdrückliche Folgenkennung im Namen: S01E10, 1x10, E10, Ep 10, Season/Staffel, „Titel - 10“ (Anime).
+_EPISODE_MARK = re.compile(r"(?i)\bS\d{1,2}[ ._-]?E\d{1,3}|\b\d{1,2}x\d{1,3}\b|\bE\d{1,3}\b|\bEp(?:isode)?[ ._]*\d|"
+                           r"\b(?:Season|Staffel|Series|Folge|Episodio)\b|\s-\s+\d{1,3}(?:[ .]|$)")
+
+
+def _episode_plausible(repl: str, g) -> bool:
+    """guessit macht aus jeder nackten Zahl eine Folge: „3-10 To Yuma“ wird Serie „3“ Folge 10, „Apollo 13“ Folge 13
+    (Testkees, Kodi-Forum #38). Eine Folge gilt nur mit Kennung im Namen — oder wenn Staffel und ein nicht rein
+    numerischer Titel da sind, wie bei Friends.101."""
+    if _EPISODE_MARK.search(repl):
+        return True
+    title = g.get("title")
+    ep = g.get("episode")
+    return bool(g.get("season")) and bool(title) and not str(title).isdigit() and ep != 0 and ep != [0]
+
+
+def _guess(repl: str):
+    """guessit-Ergebnis für den Namen; eine unplausible Folge wird als Film geraten, wenn der Film einen Titel hat."""
+    from guessit import guessit
+    g = guessit(repl)
+    if g.get("type") == "episode" and not _episode_plausible(repl, g):
+        movie = guessit(repl, {"type": "movie"})
+        if movie.get("title"):
+            _LOG.debug("%s: no episode marker, treated as movie", repl)
+            return movie
+    return g
+
+
 def _scan_video(path: Path):
     """Wie subliminal.scan_video, aber auch für Endungen, die subliminal nicht kennt (z. B. .hevc, .vp9 aus den
     Settings): dann Erkennung aus dem Namen plus Dateigröße — der Hash rechnet ohnehin auf jeder Datei.
     Erkannt wird aus dem Dateinamen, wenn er vollständig ist, sonst aus dem ganzen Pfad. Ein Ordner mit eigenem
     Titel überstimmt die Datei sonst: For.All.Mankind.S03E03 im Ordner Leonor.Will.Never.Die.2022 (Cosmo, 2026-09-28)."""
-    from subliminal import scan_video
     from subliminal.core import scan_name
-    from subliminal.video import VIDEO_EXTENSIONS
+    from subliminal.video import Video
     name = path.name if _name_complete(path.name) else None
     _LOG.debug("%s: recognized from %s", path.name, "file name" if name else "full path")
-    if path.name.lower().endswith(VIDEO_EXTENSIONS):
-        v = scan_video(str(path), name=name)
-    else:
-        v = scan_name(str(path), name=name)
-        v.size = path.stat().st_size
+    v = Video.fromguess(str(path), _guess(name or str(path)))
+    v.size = path.stat().st_size
     if name and not getattr(v, "release_group", None):
         # die Release-Gruppe steht oft nur im Ordner — übernehmen, wenn der Ordner dasselbe Werk meint
         whole = scan_name(str(path))
@@ -969,6 +1026,12 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
                 if nfo:
                     it.imdb_id, it.imdb_source = nfo, "nfo"
                     log(tr("c_imdb_nfo", id=nfo))
+            if not it.imdb_id and not isinstance(v, Episode) and re.search(r"\d", str(getattr(v, "title", "") or "")):
+                # Titel mit Zahl: die Provider verstehen die Zahl als Folgennummer, darum vorab die ID holen
+                hit = _imdb_lookup(v.title, getattr(v, "year", None))
+                if hit:
+                    it.imdb_id, it.imdb_source = hit[0], "lookup"
+                    log(tr("c_imdb_lookup", id=hit[0], title=hit[1], year=hit[2] or "?"))
             if it.imdb_id:
                 v.imdb_id = it.imdb_id
                 if isinstance(v, Episode):
