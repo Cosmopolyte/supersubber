@@ -6,6 +6,8 @@ from __future__ import annotations
 import os
 import queue
 import re
+import shutil
+import subprocess
 import sys
 import threading
 import tkinter as tk
@@ -707,6 +709,7 @@ class App(_Root):
             return
         self._scan_key = (folder, tuple(files or ()))
         self._scan_auto = auto
+        self.cfg["last_folder"] = folder if os.path.isdir(folder) else os.path.dirname(folder)
         self._worker_kind = "scan"
         if self.cfg.get("clear_history_on_scan", True):
             self.log.config(state="normal"); self.log.delete("1.0", "end"); self.log.config(state="disabled")
@@ -760,7 +763,8 @@ class App(_Root):
         self.start_btn.state(["!disabled"] if f else ["disabled"])
         if self._auto_run or (auto and self.cfg.get("auto_start", False)):
             self._auto_run = False
-            if f:
+            if f and not sc.cancelled:
+                # abgebrochener Vorlauf: nur ein Teil wurde gesucht, von selbst starten wäre falsch
                 self.start()
 
     def _run_pending(self) -> bool:
@@ -1050,10 +1054,55 @@ class App(_Root):
 
     # ---- Aktionen -----------------------------------------------------------
     def browse(self):
-        d = filedialog.askdirectory()
+        d = self._ask_directory(self._browse_start(), self.t("tt_browse"))
         if d:
             self.folder_var.set(os.path.normpath(d))
             self._trigger_scan()
+
+    def _browse_start(self) -> str:
+        """Startordner des Ordnerdialogs: der in den Einstellungen gewählte, sonst der zuletzt verwendete, sonst
+        das Pfadfeld, sonst Home. Der Tk-Dialog unter Linux beginnt sonst immer im Home-Ordner und bietet im
+        Dropdown nur dessen Elternkette (Testkees #40)."""
+        field = self.folder_var.get().strip().strip('"')
+        for cand in (self.cfg.get("start_folder", ""), self.cfg.get("last_folder", ""), field, os.path.dirname(field)):
+            if cand and os.path.isdir(os.path.expanduser(cand)):
+                return os.path.expanduser(cand)
+        return os.path.expanduser("~")
+
+    def _ask_directory(self, initialdir: str, title: str, parent=None) -> str:
+        """Ordnerdialog. Unter Linux der des Desktops, wenn zenity oder kdialog da ist: der merkt sich Größe,
+        hat Lesezeichen und ein Pfadfeld. Der eigene Tk-Dialog kann das alles nicht (Testkees #40).
+        Das Fenster bleibt währenddessen lebendig, der Dialog läuft als Prozess nebenher."""
+        if not WIN and sys.platform != "darwin":
+            cmd = None
+            kde = "kde" in os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+            tools = ("kdialog", "zenity") if kde else ("zenity", "kdialog")
+            for tool in tools:
+                exe = shutil.which(tool)
+                if not exe:
+                    continue
+                if tool == "zenity":
+                    cmd = [exe, "--file-selection", "--directory", f"--title={title}",
+                           f"--filename={initialdir.rstrip('/')}/"]
+                else:
+                    cmd = [exe, "--getexistingdirectory", initialdir, "--title", title]
+                break
+            if cmd:
+                try:
+                    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+                    while p.poll() is None:
+                        self.update()
+                        self.after(50)
+                    out = (p.stdout.read() if p.stdout else "").strip()
+                    if p.returncode == 0 and out:
+                        return out
+                    if p.returncode in (0, 1):      # 1 = Abbrechen
+                        return ""
+                    logfile.log.warning("%s exited %s, falling back to Tk dialog", cmd[0], p.returncode)
+                except Exception as e:  # noqa: BLE001
+                    logfile.log.warning("%s failed: %s, falling back to Tk dialog", cmd[0], e)
+        kw = {"parent": parent} if parent is not None else {}
+        return filedialog.askdirectory(initialdir=initialdir, title=title, **kw) or ""
 
     def on_drop(self, event):
         if self.worker and self.worker.is_alive() and self._worker_kind == "work":
@@ -1064,7 +1113,7 @@ class App(_Root):
 
     def _drop_paths(self, paths: list[str]):
         """Hineingezogene oder per Kommandozeile übergebene Pfade: Untertitel → Sync, Videos → nur sie,
-        Ordner → alles darin."""
+        Ordner → alles darin, mehrere Ordner → alle zusammen in einer Tabelle."""
         subs = [p for p in paths if os.path.splitext(p)[1].lower() in core.SUB_EXT]
         vids = [p for p in paths if os.path.splitext(p)[1].lower() in core.video_exts(self.cfg)]
         unsup = [p for p in paths if os.path.splitext(p)[1].lower() in core.UNSUPPORTED_SUB]
@@ -1096,14 +1145,21 @@ class App(_Root):
             self._local_sync(subs[0], vids[0] if vids else None)
             return
         dirs = [p for p in paths if os.path.isdir(p)]
-        if dirs:
+        if len(dirs) == 1 and not vids:
             self._files = None
             self.folder_var.set(dirs[0])
-        elif vids:
-            # einzelne Videos hineingezogen: nur sie, nicht der ganze Ordner. Das Feld zeigt die Datei,
-            # bei mehreren ihren Ordner — die Tabelle zeigt, was wirklich gemeint ist
-            self._files = [os.path.normpath(p) for p in vids]
-            self._files_field = self._files[0] if len(vids) == 1 else os.path.dirname(self._files[0])
+        elif dirs or vids:
+            # einzelne Videos oder mehrere Ordner hineingezogen: nur sie, nicht alles drumherum. Das Feld zeigt
+            # die Datei, bei mehreren den gemeinsamen Ordner — die Tabelle zeigt, was wirklich gemeint ist
+            self._files = [os.path.normpath(p) for p in dirs + vids]
+            if len(self._files) == 1:
+                self._files_field = self._files[0]
+            else:
+                try:
+                    common = os.path.commonpath(self._files)
+                except ValueError:          # verschiedene Laufwerke
+                    common = ""
+                self._files_field = common or os.path.dirname(self._files[0])
             self.folder_var.set(self._files_field)
         elif paths:
             self._files = None
@@ -1416,6 +1472,19 @@ class App(_Root):
         ext_var = tk.StringVar(value=str(self.cfg.get("video_extensions_extra", "")))
         ttk.Button(g3, text=self.t("st_ext_edit"), style="Square.TButton",
                    command=lambda: self._ext_dialog(win, ext_var)).grid(row=1, column=1, sticky="w", pady=3, padx=(8, 0))
+        ttk.Label(g3, text=self.t("st_start_folder")).grid(row=2, column=0, sticky="w", pady=3)
+        start_var = tk.StringVar(value=str(self.cfg.get("start_folder", "")))
+        srow = ttk.Frame(g3); srow.grid(row=2, column=1, sticky="w", pady=3, padx=(8, 0))
+        start_entry = ttk.Entry(srow, textvariable=start_var, width=28)
+        start_entry.pack(side="left")
+        self._tooltip(start_entry, self.t("tt_start_folder"))
+
+        def pick_start():
+            cur = os.path.expanduser(start_var.get().strip())
+            d = self._ask_directory(cur if os.path.isdir(cur) else self._browse_start(), self.t("st_start_folder").rstrip(":"), parent=win)
+            if d:
+                start_var.set(os.path.normpath(d))
+        ttk.Button(srow, text="…", width=4, style="Square.TButton", command=pick_start).pack(side="left", padx=(6, 0))
         ttk.Label(g3, text=self.t("st_log_max")).grid(row=3, column=0, sticky="w", pady=(8, 3))
         log_var = tk.StringVar(value=str(self.cfg.get("log_max_mb", 20)))
         lrow = ttk.Frame(g3); lrow.grid(row=3, column=1, sticky="w", pady=(8, 3), padx=(8, 0))
@@ -1439,6 +1508,7 @@ class App(_Root):
             self.cfg["auto_start"] = bool(auto_var.get())
             self.cfg["clear_history_on_scan"] = bool(clear_var.get())
             self.cfg["video_extensions_extra"] = ext_var.get().strip()
+            self.cfg["start_folder"] = start_var.get().strip().strip('"')
             try:
                 self.cfg["log_max_mb"] = max(1, min(500, int(float(log_var.get().replace(",", ".")))))
             except ValueError:

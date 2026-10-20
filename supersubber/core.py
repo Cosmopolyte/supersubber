@@ -193,9 +193,14 @@ def _is_video(p: Path, min_size_mb: int, exts: frozenset = VIDEO_EXT) -> bool:
         return False
 
 
-def find_videos(folder: str, min_size_mb: int, exts: frozenset = VIDEO_EXT) -> list[Path]:
+def find_videos(folder: str, min_size_mb: int, exts: frozenset = VIDEO_EXT,
+                cancel: threading.Event | None = None) -> list[Path]:
+    """Alle Videos unter folder. Mit cancel endet der Durchlauf beim nächsten Ordner — über NFS dauert
+    schon das Einsammeln, und Abbrechen soll dann nicht erst nach dem ganzen Baum greifen (Testkees #40)."""
     out = []
     for root, _, files in os.walk(folder):
+        if cancel is not None and cancel.is_set():
+            break
         for f in files:
             p = Path(root) / f
             if _is_video(p, min_size_mb, exts):
@@ -1168,6 +1173,9 @@ def update_languages(sc: Scan, languages: list[str], cfg: dict, progress: Progre
         if added:
             _region_setup()
             for it in sc.items:
+                if cancel.is_set():
+                    sc.cancelled = True
+                    return sc
                 _presence(it, added, sc.use_embedded, log, tr, announce=False)
             todo = [it for it in sc.items if any(l in added for l in it.langs + it.sdh_langs)]
             log(tr("c_found", v=len(sc.items), t=sum(1 for it in todo if any(l in added for l in it.langs)),
@@ -1199,6 +1207,7 @@ def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: 
          cancel: threading.Event, tr: Tr = _tr_fallback, files: list | None = None) -> Scan:
     """Vorlauf: Videos finden, erkennen, bei den Providern suchen, bewerten. Kein Download, kein Sync.
     files: nur diese Videodateien statt des ganzen Ordners — wer einzelne Dateien hineinzieht, meint nur sie.
+    Ordner in der Liste zählen mit allem darin, wie das Pfadfeld: mehrere Filmordner auf einmal (Cosmo, 2026-10-20).
     Eine Datei als folder gilt genauso."""
     if files is None and os.path.isfile(folder):
         files = [folder]
@@ -1210,10 +1219,21 @@ def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: 
         exts = video_exts(cfg)
         _LOG.info("scan %s files=%s languages=%s exts=%s", folder, files, languages, sorted(exts))
         if files is not None:
-            # ausdrücklich gewählte Dateien: nur die Endung zählt, Mindestgröße und Sample-Filter gelten nicht
-            videos = sorted({Path(f) for f in files if Path(f).suffix.lower() in exts and Path(f).is_file()})
+            # ausdrücklich gewählte Dateien: nur die Endung zählt, Mindestgröße und Sample-Filter gelten nicht;
+            # hineingezogene Ordner werden wie das Pfadfeld durchsucht, mit beiden Filtern
+            picked: set[Path] = set()
+            dirs = [Path(f) for f in files if Path(f).is_dir()]
+            for p in dirs:
+                picked.update(find_videos(str(p), int(cfg.get("min_size_mb", 50)), exts, cancel))
+            picked.update(Path(f) for f in files if Path(f).suffix.lower() in exts and Path(f).is_file())
+            videos = sorted(picked)
+            if len(dirs) > 1:
+                log(tr("c_folders", n=len(dirs), names=", ".join(p.name or str(p) for p in dirs)))
         else:
-            videos = find_videos(folder, int(cfg.get("min_size_mb", 50)), exts)
+            videos = find_videos(folder, int(cfg.get("min_size_mb", 50)), exts, cancel)
+        if cancel.is_set():
+            sc.cancelled = True
+            return sc
         if not videos:
             sc.error = tr("c_none")
             return sc
@@ -1231,6 +1251,10 @@ def scan(folder: str, languages: list[str], cfg: dict, progress: Progress, log: 
         for v in videos:
             if not writable[v.parent]:
                 continue
+            if cancel.is_set():
+                # ffprobe je Datei dauert bei großen Ordnern; Abbrechen soll hier greifen, nicht erst bei der Suche
+                sc.cancelled = True
+                return sc
             it = Item(video=v, langs=[], split=split)
             _presence(it, languages, use_embedded, log, tr)
             sc.items.append(it)

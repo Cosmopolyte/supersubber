@@ -29,6 +29,8 @@ DEFAULTS = {
     "min_size_mb": 50,
     "ui_language": "en",                 # Default Englisch; beim ersten Start Systemsprache erkannt
     "window": "",                        # letzte Fenstergeometrie „WxH+X+Y" (leer = nach Bildschirm berechnet)
+    "last_folder": "",                   # zuletzt durchsuchter Ordner; Startordner des Ordnerdialogs
+    "start_folder": "",                  # fester Startordner des Ordnerdialogs; leer = zuletzt durchsuchter
     "check_updates_on_start": True,      # GitHub-Release-Abfrage beim Start, Hinweis nur bei neuerer Version
     "embedded_counts": True,             # eingebettete Untertitelspuren gelten als vorhanden
     "video_extensions_extra": "",        # zusätzliche Video-Endungen, z. B. „hevc, vp9"

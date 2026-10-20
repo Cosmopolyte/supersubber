@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.8 — 2026-10-21
+
+- Several folders can be dropped at once, also together with single videos. Everything dropped lands in one table; the path field shows the common parent folder.
+- Cancel now also stops the preparation before the search: collecting the videos and checking each one for embedded subtitles. On a big folder over the network this used to run to the end before Cancel took effect. A running provider request still finishes, as before.
+- The folder dialog opens in the last folder searched. The new setting **Start folder** fixes it to one folder instead.
+- Linux: the folder dialog is now the desktop's own when `zenity` or `kdialog` is installed. It remembers its size, has bookmarks and a path field. Without them the built-in dialog is used as before.
+
 ## 1.6.7 — 2026-10-18
 
 - Fix: a film whose name starts with a number, such as "3-10 To Yuma" or "Apollo 13", was searched as a TV episode and found nothing. A file is now treated as an episode only when the name carries an episode mark like S01E10, 1x10 or Episode 10. The subtitle sites make the same mistake with such titles, so a film title with a number is first looked up on IMDb and then searched by its IMDb ID.
