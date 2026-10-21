@@ -1498,7 +1498,7 @@ class App(_Root):
                 srow.grid_remove()
             mode_box.selection_clear()
         mode_box.bind("<<ComboboxSelected>>", mode_changed)
-        mode_changed()
+        srow.grid(row=3, column=1, sticky="w", pady=(0, 3), padx=(8, 0))   # erst einmal sichtbar, siehe Fenstergröße unten
         ttk.Label(g3, text=self.t("st_log_max")).grid(row=4, column=0, sticky="w", pady=(8, 3))
         log_var = tk.StringVar(value=str(self.cfg.get("log_max_mb", 20)))
         lrow = ttk.Frame(g3); lrow.grid(row=4, column=1, sticky="w", pady=(8, 3), padx=(8, 0))
@@ -1545,6 +1545,11 @@ class App(_Root):
                         font=(UI_FONT, 8))
         foot.pack(pady=(12, 0))
         foot.bind("<Button-1>", lambda e: webbrowser.open("https://github.com/Cosmopolyte/supersubber"))
+        # Fenstergröße mit sichtbarer Pfadzeile festhalten: verschwindet die Zeile, bleibt das Fenster gleich groß
+        # und springt nicht — der Fenstermanager würde es sonst bei jeder Größenänderung neu platzieren
+        win.update_idletasks()
+        win.minsize(win.winfo_reqwidth(), win.winfo_reqheight())
+        mode_changed()
 
     def _ext_dialog(self, parent, ext_var: tk.StringVar) -> None:
         """Video-Endungen als Liste: die Standard-Endungen fest und grau, eigene hinzufügen und entfernen.
