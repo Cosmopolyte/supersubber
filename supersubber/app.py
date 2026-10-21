@@ -1060,11 +1060,12 @@ class App(_Root):
             self._trigger_scan()
 
     def _browse_start(self) -> str:
-        """Startordner des Ordnerdialogs: der in den Einstellungen gewählte, sonst der zuletzt verwendete, sonst
-        das Pfadfeld, sonst Home. Der Tk-Dialog unter Linux beginnt sonst immer im Home-Ordner und bietet im
-        Dropdown nur dessen Elternkette (Testkees #40)."""
+        """Startordner des Ordnerdialogs: der zuletzt durchsuchte, wenn „remember last folder" an ist, sonst der
+        Standardordner aus den Einstellungen; danach das Pfadfeld, sonst Home. Der Tk-Dialog unter Linux beginnt
+        sonst immer im Home-Ordner und bietet im Dropdown nur dessen Elternkette (Testkees #40)."""
         field = self.folder_var.get().strip().strip('"')
-        for cand in (self.cfg.get("start_folder", ""), self.cfg.get("last_folder", ""), field, os.path.dirname(field)):
+        first = self.cfg.get("last_folder", "") if self.cfg.get("remember_last_folder", True) else self.cfg.get("start_folder", "")
+        for cand in (first, field, os.path.dirname(field)):
             if cand and os.path.isdir(os.path.expanduser(cand)):
                 return os.path.expanduser(cand)
         return os.path.expanduser("~")
@@ -1472,22 +1473,35 @@ class App(_Root):
         ext_var = tk.StringVar(value=str(self.cfg.get("video_extensions_extra", "")))
         ttk.Button(g3, text=self.t("st_ext_edit"), style="Square.TButton",
                    command=lambda: self._ext_dialog(win, ext_var)).grid(row=1, column=1, sticky="w", pady=3, padx=(8, 0))
-        ttk.Label(g3, text=self.t("st_start_folder")).grid(row=2, column=0, sticky="w", pady=3)
+        start_lbl = ttk.Label(g3, text=self.t("st_start_folder"))
+        start_lbl.grid(row=2, column=0, sticky="w", pady=3)
         start_var = tk.StringVar(value=str(self.cfg.get("start_folder", "")))
         srow = ttk.Frame(g3); srow.grid(row=2, column=1, sticky="w", pady=3, padx=(8, 0))
         start_entry = ttk.Entry(srow, textvariable=start_var, width=28)
         start_entry.pack(side="left")
-        self._tooltip(start_entry, self.t("tt_start_folder"))
 
         def pick_start():
             cur = os.path.expanduser(start_var.get().strip())
             d = self._ask_directory(cur if os.path.isdir(cur) else self._browse_start(), self.t("st_start_folder").rstrip(":"), parent=win)
             if d:
                 start_var.set(os.path.normpath(d))
-        ttk.Button(srow, text="…", width=4, style="Square.TButton", command=pick_start).pack(side="left", padx=(6, 0))
-        ttk.Label(g3, text=self.t("st_log_max")).grid(row=3, column=0, sticky="w", pady=(8, 3))
+        start_btn = ttk.Button(srow, text="…", width=4, style="Square.TButton", command=pick_start)
+        start_btn.pack(side="left", padx=(6, 0))
+        # „letzten Ordner merken" ist an: der feste Standardordner spielt keine Rolle und wird ausgegraut
+        remember_var = tk.BooleanVar(value=bool(self.cfg.get("remember_last_folder", True)))
+
+        def grey_start(*_):
+            st = ["disabled"] if remember_var.get() else ["!disabled"]
+            for w in (start_lbl, start_entry, start_btn):
+                w.state(st)
+        remember_var.trace_add("write", grey_start)
+        grey_start()
+        tk.Checkbutton(g3, text=self.t("st_remember_folder"), variable=remember_var, bg=CARD, fg=LIGHT,
+                       activebackground=CARD, activeforeground=LIGHT, selectcolor=CHECK_BG, highlightthickness=0,
+                       font=(UI_FONT, 9)).grid(row=3, column=0, columnspan=2, sticky="w", pady=(0, 3), padx=(0, 0))
+        ttk.Label(g3, text=self.t("st_log_max")).grid(row=4, column=0, sticky="w", pady=(8, 3))
         log_var = tk.StringVar(value=str(self.cfg.get("log_max_mb", 20)))
-        lrow = ttk.Frame(g3); lrow.grid(row=3, column=1, sticky="w", pady=(8, 3), padx=(8, 0))
+        lrow = ttk.Frame(g3); lrow.grid(row=4, column=1, sticky="w", pady=(8, 3), padx=(8, 0))
         ttk.Spinbox(lrow, from_=1, to=500, textvariable=log_var, width=5).pack(side="left")
         ttk.Button(lrow, text=self.t("st_open_log"), style="Square.TButton",
                    command=logfile.open_folder).pack(side="left", padx=(10, 0))
@@ -1509,6 +1523,7 @@ class App(_Root):
             self.cfg["clear_history_on_scan"] = bool(clear_var.get())
             self.cfg["video_extensions_extra"] = ext_var.get().strip()
             self.cfg["start_folder"] = start_var.get().strip().strip('"')
+            self.cfg["remember_last_folder"] = bool(remember_var.get())
             try:
                 self.cfg["log_max_mb"] = max(1, min(500, int(float(log_var.get().replace(",", ".")))))
             except ValueError:
