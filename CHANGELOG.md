@@ -4,7 +4,7 @@
 
 - Several folders can be dropped at once, also together with single videos. Everything dropped lands in one table; the path field shows the common parent folder.
 - Cancel now also stops the preparation before the search: collecting the videos and checking each one for embedded subtitles. On a big folder over the network this used to run to the end before Cancel took effect. A running provider request still finishes, as before.
-- The folder dialog opens in the last folder searched. Two new settings control this: **Folder dialog: remember last folder**, on by default, and **Folder dialog: default folder** for a fixed folder such as the media share when the first one is off.
+- The folder dialog opens in the last folder searched. The new setting **Open folder dialog path** offers **Remember last folder** or **Default folder** with a fixed path, for example the media share.
 - Linux: the folder dialog is now the desktop's own when `zenity` or `kdialog` is installed. It remembers its size, has bookmarks and a path field. Without them the built-in dialog is used as before.
 
 ## 1.6.7 — 2026-10-18
