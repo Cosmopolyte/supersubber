@@ -508,55 +508,15 @@ def _region_setup():
     from subliminal import region
     if not region.is_configured:
         region.configure("dogpile.cache.memory")
-    _patch_opensubtitlescom()
 
 
-def _patch_opensubtitlescom():
-    """subliminal 2.7 schickt die Serien-IMDb-ID nicht an die API (TODO im Provider).
-    Patch: series_imdb_id wird als show_imdb_id durchgereicht und als präzises Kriterium
-    parent_imdb_id + Staffel + Episode VOR die anderen Suchkriterien gestellt."""
-    from subliminal.providers import opensubtitlescom as osc
-
-    if getattr(osc.OpenSubtitlesComProvider, "_supersubber_patched", False):
-        return
-    from subliminal.video import Episode, Movie
-
-    def list_subtitles(self, video, languages):
-        query = season = episode = show_imdb_id = None
-        if isinstance(video, Episode):
-            query, season, episode = video.series, video.season, video.episode
-            show_imdb_id = video.series_imdb_id
-        elif isinstance(video, Movie):
-            query = video.title
-        return self.query(
-            languages,
-            moviehash=video.hashes.get('opensubtitles'),
-            imdb_id=video.imdb_id,
-            show_imdb_id=show_imdb_id,
-            query=query,
-            season=season,
-            episode=episode,
-            allow_machine_translated=False,
-            sort_by_download_count=True,
-        )
-
-    orig_make = osc.OpenSubtitlesComProvider._make_query
-
-    def _make_query(self, *, show_imdb_id=None, season=None, episode=None, **kw):
-        try:
-            criteria = orig_make(self, show_imdb_id=show_imdb_id, season=season, episode=episode, **kw)
-        except ValueError:
-            criteria = []
-        if show_imdb_id and season is not None and episode is not None:
-            criteria.insert(0, {'parent_imdb_id': osc.sanitize_id(show_imdb_id),
-                                'season_number': season, 'episode_number': episode})
-        if not criteria:
-            raise ValueError('Not enough information')
-        return criteria
-
-    osc.OpenSubtitlesComProvider.list_subtitles = list_subtitles
-    osc.OpenSubtitlesComProvider._make_query = _make_query
-    osc.OpenSubtitlesComProvider._supersubber_patched = True
+def _set_video_ids(v, imdb_id: str) -> None:
+    """IMDb-ID ans subliminal-Video hängen. Seit 2.8.0 lesen die Provider `external_ids`; bei Serien
+    sucht .org mit imdb_id + Staffel + Folge, .com mit parent_imdb_id (unser PR 1385)."""
+    from subliminal.video import Episode
+    v.external_ids["imdb_id"] = imdb_id
+    if isinstance(v, Episode):
+        v.external_ids["series_imdb_id"] = imdb_id
 
 
 def _providers(cfg: dict, log: Log, tr: Tr):
@@ -599,12 +559,18 @@ def _providers(cfg: dict, log: Log, tr: Tr):
 _IMDB_RE = re.compile(r"tt\d{7,10}")
 
 
-def _imdb_lookup(title: str, year: int | None) -> tuple[str, str, int | None] | None:
-    """Film-Titel → IMDb-ID über die IMDb-Vorschlagssuche. Nötig für Titel mit Zahlen: OpenSubtitles .org und .com
-    zerlegen die Suchanfrage selbst wie einen Dateinamen und halten „Apollo 13“ für Folge 13 der Serie „Apollo“,
-    „3-10 To Yuma“ für Staffel 3 — Treffer: null (Testkees, Kodi-Forum #38). Mit ID suchen beide gezielt.
-    Genommen wird der erste Spielfilm, dessen Titel nach sanitize gleich ist; ein bekanntes Jahr muss bis auf
-    eins passen. Bei Remakes ohne Jahr im Namen gewinnt so der bekanntere, die ID lässt sich im Dialog ändern."""
+_IMDB_KINDS = {False: ("movie", "tvMovie", "video"), True: ("tvSeries", "tvMiniSeries")}
+
+
+def _imdb_lookup(title: str, year: int | None, episode: bool = False) -> tuple[str, str, int | None] | None:
+    """Titel → IMDb-ID über die IMDb-Vorschlagssuche, der Rückfall, wenn die Titelsuche bei den Providern nichts
+    bringt: Die Quellen kennen den Titel dann so nicht — Landessprache im Dateinamen („Der Herr der Ringe: Die
+    Ringe der Macht“, Cosmo 2026-11-13), Schreibvarianten, oder eine Zahl im Filmtitel, die OpenSubtitles .org
+    und .com als Folgennummer lesen („Apollo 13“, „3-10 To Yuma“; Testkees, Kodi-Forum #38). Mit ID suchen die
+    Provider gezielt und sprachunabhängig. IMDb kennt die Landestitel als Aliasse, die Vorschlagssuche findet
+    sie. Genommen wird der erste Treffer der passenden Art, Film oder Serie; ein bekanntes Jahr muss bis auf
+    eins passen. Ein gleichlautender Titel gewinnt vor dem Alias-Treffer. Die ID steht im Log und in der
+    IMDb-Spalte und lässt sich per SET korrigieren."""
     import requests
     from subliminal.utils import sanitize
     from urllib.parse import quote
@@ -619,17 +585,17 @@ def _imdb_lookup(title: str, year: int | None) -> tuple[str, str, int | None] | 
     except Exception as e:  # noqa: BLE001
         _LOG.debug("imdb lookup %r failed: %s", title, e)
         return None
+    fits = []
     for row in rows:
         rid = str(row.get("id", ""))
-        if not rid.startswith("tt") or row.get("qid") not in ("movie", "tvMovie", "video"):
-            continue
-        if sanitize(str(row.get("l", ""))) != want:
+        if not rid.startswith("tt") or row.get("qid") not in _IMDB_KINDS[episode]:
             continue
         y = row.get("y")
         if year and y and abs(int(y) - int(year)) > 1:
             continue
-        return rid, str(row.get("l")), int(y) if y else None
-    return None
+        fits.append((rid, str(row.get("l")), int(y) if y else None))
+    exact = [f for f in fits if sanitize(f[1]) == want]
+    return (exact or fits or [None])[0]
 
 
 def _imdb_from_nfo(video: Path, episode: bool, exts: frozenset = VIDEO_EXT) -> str | None:
@@ -998,6 +964,12 @@ def provider_label(name: str) -> str:
     return PROVIDER_LABELS.get(name, name).split(" (")[0]
 
 
+def _any_hit(it: Item, v, want: set) -> bool:
+    """Erreicht irgendein Kandidat einer gesuchten Sprache die Mindestpunktzahl?"""
+    score = _score_fn(v, it.imdb_id)
+    return any(s.language in want and score(s, v) >= it.min_score for s in it.candidates)
+
+
 def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
                  exts: frozenset = VIDEO_EXT, only: list | None = None, on_provider=None) -> None:
     """Erkennen + NFO + Provider-Suche + Bewertung für ein Item. Lädt nichts herunter.
@@ -1031,16 +1003,8 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
                 if nfo:
                     it.imdb_id, it.imdb_source = nfo, "nfo"
                     log(tr("c_imdb_nfo", id=nfo))
-            if not it.imdb_id and not isinstance(v, Episode) and re.search(r"\d", str(getattr(v, "title", "") or "")):
-                # Titel mit Zahl: die Provider verstehen die Zahl als Folgennummer, darum vorab die ID holen
-                hit = _imdb_lookup(v.title, getattr(v, "year", None))
-                if hit:
-                    it.imdb_id, it.imdb_source = hit[0], "lookup"
-                    log(tr("c_imdb_lookup", id=hit[0], title=hit[1], year=hit[2] or "?"))
             if it.imdb_id:
-                v.imdb_id = it.imdb_id
-                if isinstance(v, Episode):
-                    v.series_imdb_id = it.imdb_id
+                _set_video_ids(v, it.imdb_id)
             # Mindest-Score: Serien Serie+Staffel+Episode, Filme Titel+Jahr (ohne Jahr im Namen nur Titel).
             # Hash- und IMDb-Treffer liegen darüber. Ohne Schwelle gewinnt jeder Titel-Teilstring.
             if isinstance(v, Episode):
@@ -1051,6 +1015,19 @@ def _search_item(pool, it: Item, log: Log, tr: Tr, manual_id: str | None = None,
         want = {Language.fromietf(l) for l in langs + sdh_langs}
         with _ProviderWatch(on_provider or (lambda name: None)):
             it.candidates = list(it.candidates) + (list(pool.list_subtitles(v, want)) if want else [])
+        if fresh and want and not it.imdb_id and not _any_hit(it, v, want):
+            # kein brauchbarer Treffer und keine ID: die Quellen kennen den Titel so nicht — ID bei IMDb holen
+            # und einmal mit ID suchen. Kostet nur im Fehlfall eine Anfrage mehr (Cosmo, 2026-11-13). Die
+            # Kandidatenliste allein sagt nichts: „3-10 To Yuma“ bringt 41 Treffer, alle unter der Schwelle
+            episode = isinstance(v, Episode)
+            name = getattr(v, "series", None) if episode else getattr(v, "title", None)
+            hit = _imdb_lookup(str(name or ""), getattr(v, "year", None), episode)
+            if hit:
+                it.imdb_id, it.imdb_source = hit[0], "lookup"
+                log(tr("c_imdb_lookup", id=hit[0], title=hit[1], year=hit[2] or "?"))
+                _set_video_ids(v, it.imdb_id)
+                with _ProviderWatch(on_provider or (lambda name: None)):
+                    it.candidates = list(pool.list_subtitles(v, want))
         if fresh and it.imdb_id:
             # mit ID zählt, was die Provider zur ID sagen — nicht der aus dem Pfad geratene Titel
             se = _se(v) if isinstance(v, Episode) else ""

@@ -7,7 +7,7 @@ SuperSubber invokes alass and ffmpeg as separate processes (no linking); sublimi
 | alass (alass-cli) | 2.0.0 | GPL-3.0 | https://github.com/kaegi/alass — license text in `bin/LICENSE-alass.txt` |
 | ffmpeg / ffprobe, Windows package (from alass-windows64.zip) | 4.x (build shipped with the alass release) | GPL-2.0+ (build includes GPL components) | https://ffmpeg.org — license text in `bin/LICENSE-ffmpeg.txt` |
 | ffmpeg / ffprobe, Linux package (static build by John Van Sickle) | 7.0.2 | GPL-3.0 (static build includes GPL components) | https://johnvansickle.com/ffmpeg/ — license text in `bin/LICENSE-ffmpeg-linux.txt`, build details in `bin/ffmpeg-linux-build-info.txt` |
-| subliminal | 2.7.1 | MIT | https://github.com/Diaoul/subliminal |
+| subliminal | 2.8.0 | MIT | https://github.com/Diaoul/subliminal |
 | guessit, babelfish | (subliminal dependencies) | LGPL-3.0 / BSD-3 | |
 | tkinterdnd2 | 0.6.x | MIT | https://github.com/pmgagne/tkinterdnd2 |
 | keyring, SecretStorage, jeepney (Linux package only) | 25.x / 3.x / 0.9 | MIT / BSD-3 / MIT | https://github.com/jaraco/keyring |

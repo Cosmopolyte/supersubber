@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.9 — 2026-11-13
+
+- Fix: a series or film named in another language in the file name, such as "Der Herr der Ringe: Die Ringe der Macht", was not found although the subtitle sites have it under the English title. When a search comes back empty, the title is now looked up on IMDb, which knows the local titles, and the search is repeated with the IMDb ID. This replaces the narrower rule from 1.6.7 that only did this for film titles with a number. The ID used is shown in the IMDb column and in the log and can be changed with SET.
+- subliminal updated to 2.8.0. It now searches episodes by the show's IMDb ID itself, so SuperSubber's own workaround for this is gone.
+
 ## 1.6.8 — 2026-10-21
 
 - Several folders can be dropped at once, also together with single videos. Everything dropped lands in one table; the path field shows the common parent folder.

@@ -1,4 +1,4 @@
-subliminal==2.7.1   # exakt gepinnt: core.py patcht Provider-Interna (parent_imdb_id)
+subliminal==2.8.0   # exakt gepinnt für reproduzierbare Builds; ab 2.8.0 Serien-Suche per IMDb-ID (unser PR 1385)
 tkinterdnd2>=0.4
 pyinstaller>=6
 keyring>=25; sys_platform != "win32"   # Linux: OpenSubtitles password in the system keyring
